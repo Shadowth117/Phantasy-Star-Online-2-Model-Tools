@@ -290,8 +290,11 @@ fn loadPSO2Anim aqmFile =
 	(
 		for o in objects where classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false)) do
 		(
-			id = (filterstring o.name "()")[1]
-			sceneBones[( (id as integer) + 1)] = o
+			if (findstring o.name ")" != undefined) then
+			(
+				id = (filterstring o.name "()")[1]
+				sceneBones[( (id as integer) + 1)] = o
+			)
 		)
 	)
 	--Get time of last frame
