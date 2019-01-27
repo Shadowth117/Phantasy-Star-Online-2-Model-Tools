@@ -131,7 +131,7 @@ public:
 
 		unsigned int shad_index;		// B3-08
 		unsigned int tset_index;		// B4-08
-		unsigned int _b5;				// B5-08
+		unsigned int _b5;				// B5-08 Rigid Rig Bone and ? on weighted meshes
 		unsigned int _c0;				// C0-08
 
 		unsigned int _c1;				// C1-08

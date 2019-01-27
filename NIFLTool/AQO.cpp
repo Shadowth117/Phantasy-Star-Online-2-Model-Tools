@@ -2208,6 +2208,9 @@ bool clAQO::ExportObj(const char *filename){
 
 	unsigned int v_index = 0;
 	for(unsigned int i=0;i<objc[0].vset_count;i++){
+
+		unsigned int vCount = 0;
+
 		fprintf(fpw_obj, "\n\n");
 		fprintf(fpw_obj, "g mesh%d_%d_%d_%d_%d\n", i, mesh[i].mate_index, mesh[i].rend_index, mesh[i].shad_index, mesh[i].tset_index);
 		fprintf(fpw_obj, "o mesh%d_%d_%d_%d_%d\n", i, mesh[i].mate_index, mesh[i].rend_index, mesh[i].shad_index, mesh[i].tset_index);
@@ -2220,6 +2223,18 @@ bool clAQO::ExportObj(const char *filename){
 				fprintf(fpw_obj, "%d ", bonepalette[i][j]);
 			}
 			fprintf(fpw_obj, "\n");
+		}
+		else
+		{ // Handle rigid weights
+			fprintf(fpw_obj, "bp "); 
+			fprintf(fpw_obj, "%d", mesh[i]._b5);
+			fprintf(fpw_obj, "\n");
+			for (unsigned int k = 0; k < vset[i].vtxl_count; k++) {
+				fprintf(fpw_obj, "bw 1.000000 0.000000 0.000000 0.000000\n");
+			}
+			for (unsigned int k = 0; k < vset[i].vtxl_count; k++) {
+				fprintf(fpw_obj, "bi 0 0 0 0\n");
+			}
 		}
 
 		for(unsigned int j=0;j<vset[i].vtxe_count;j++){
