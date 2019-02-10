@@ -466,7 +466,7 @@ fn loadPSO2Anim aqmFile =
 					)
 				) else
 				(
-					at time 0 pso2Bone.Controller.Rotation = nodeAnimArray[i].nodeRotFrames[1]
+					at time 0 pso2Bone.Controller.Rotation = (inverse nodeAnimArray[i].nodeRotFrames[1])
 				)
 				--Scale 
 				if (nodeAnimArray[i].nodeSclTimings != undefined) then
