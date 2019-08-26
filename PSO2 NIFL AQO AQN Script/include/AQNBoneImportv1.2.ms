@@ -388,7 +388,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 	--Loop through bones and gather info
 	for o in objects where isGroupHead o == false and isGroupMember o == false and (superclassof o == helper or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
 	(
-		print o
+		--print o
 		boneName = o.name
 		boneParent = o.parent
 		boneMatrix = (inverse o.transform)
@@ -725,7 +725,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		WriteFloat pso2Bones boneParams[i].BoneRelTFM.translationpart.z -- Bone PosZ 
 		WriteFloat pso2Bones 0 -- Always 0?
 		eulerRot = (quattoeuler2 boneParams[i].BoneRelTFM.rotationpart)
-		print (boneParams[i].BoneName + eulerRot as string)
+		--print (boneParams[i].BoneName + eulerRot as string)
 		WriteFloat pso2Bones eulerRot.x -- Bone RotX Euler
 		WriteFloat pso2Bones eulerRot.y -- Bone RotY Euler
 		WriteFloat pso2Bones eulerRot.z -- Bone RotZ Euler
