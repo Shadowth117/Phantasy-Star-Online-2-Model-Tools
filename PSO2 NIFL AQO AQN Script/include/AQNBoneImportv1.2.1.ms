@@ -406,7 +406,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		)
 		if getUserProp o "NodeID" == undefined then
 		(
-			setUserProp "NodeID" boneParams.Count
+			setUserProp o "NodeID" boneParams.Count
 		)
 		
 		--print o
