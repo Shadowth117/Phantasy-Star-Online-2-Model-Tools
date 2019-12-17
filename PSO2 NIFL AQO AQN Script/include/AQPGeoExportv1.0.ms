@@ -55,7 +55,19 @@ struct pso2Mesh
 	MeshMat,
 	MeshFaces,
 	MeshVerts,
-	MeshId
+	MeshEdgeVerts,
+	MeshId,
+	MeshBonePalette,
+	MeshValidVTypes,
+	MeshVertSize   
+)
+
+struct VSetOff
+(
+	VTXEOff,
+	VTXLOff,
+	BPalOff,
+	EVertOff
 )
 
 fn originMinMax objList ResizeChecked ResizeValue YZRot =
@@ -155,6 +167,28 @@ fn originMinMax objList ResizeChecked ResizeValue YZRot =
 	)
 	
 	bounds = (aqpBounding OrigX:origin.x OrigY:origin.y OrigZ:origin.z Radius:radius DiffX:difference.x DiffY:difference.y DiffZ:difference.z)
+)
+
+fn GetUniqueMats objList =
+(
+	matArray = #()
+	for obj in objList do
+	(
+		match = false
+		for m in matArray while match == false do
+		(
+			if obj.material == m then
+			(
+				match = true
+			)
+		)
+		if match == false then
+		(
+			append matArray obj.material
+		)
+	)
+	
+	matArray
 )
 
 fn GetFacesByMatId obj =
@@ -328,8 +362,11 @@ fn boneCountSplitter obj boneLimit =
 	fCount = (getNumFaces obj.mesh)
 	idToRemove = -#{1..fCount}
 	objOut = #()
+	objEdgeVertsList = #()
 	objFaceArrayList = #()
 	filled = false
+	meshop.setNumVDataChannels obj.mesh ((meshop.getNumVDataChannels obj.mesh) + 1) keep:true
+	meshop.setVDataChannelSupport obj.mesh 26 false
 	
 	while filled == false do
 	(
@@ -355,17 +392,20 @@ fn boneCountSplitter obj boneLimit =
 			
 			--Get verts of the face
 			faceVerts = (meshop.getVertsUsingFace obj.mesh f) as array
-			
+			faceVertsCheck = #() --Array for gathering edge vert candidates
 			--Get bones in this face
 			for v in faceVerts do
 			(
 				weightCount = skinOps.GetVertexWeightCount objSkin v
 				
+				vertCheck = false
 				for b = 1 to weightCount do
 				(
 					bId = (skinOps.GetVertexWeightBoneID objSkin v b)
 					appendIfUnique faceBones bId
+					if (finditem objBones bId) == 0 then (vertCheck = true)
 				)
+				if vertCheck == true then (append faceVertsCheck v)
 			)
 			
 			--Check what's new
@@ -385,9 +425,11 @@ fn boneCountSplitter obj boneLimit =
 					appendIfUnique objBones fb
 				)
 				objFaceArray[f] = false
-			) 
+			) else 
+			(
+				for vert in faceVertsCheck do (appendIfUnique objEdgeVertsList vert)
+			)
 		)
-		
 		append objFaceArrayList objFaceArray
 		
 		idToRemove += -objFaceArray 
@@ -400,6 +442,12 @@ fn boneCountSplitter obj boneLimit =
 				filled = false
 			)
 		)
+	)
+	
+	--Mark edge verts
+	for vert in objEdgeVertsList do
+	(
+		meshop.setVDataValue obj.mesh 26 vert 5.0
 	)
 	
 	objOut = meshSplitter obj objFaceArrayList
@@ -442,7 +490,7 @@ fn splitMeshByBoneCount meshes boneLimit =
 	splitMeshes
 )
 
-fn pso2VertOptimizer meshes =
+fn pso2VertOptimizer meshes UNRMExport =
 (
 	meshData = #()
 	for obj in meshes do
@@ -450,6 +498,7 @@ fn pso2VertOptimizer meshes =
 		local pso2VertArr = #()
 		fCount = (getNumFaces obj.mesh)
 		objFaces = #()
+		objEdgeVerts = #()
 		
 		max modify mode
 		objSkin = obj.skin
@@ -481,10 +530,14 @@ fn pso2VertOptimizer meshes =
 					(
 						append weights (skinOps.GetVertexWeight objSkin v b)
 						append _bones (skinOps.GetVertexWeightBoneID objSkin v b)
+						appendIfUnique objBonePalette (skinOps.GetVertexWeightBoneID objSkin v b)
 					)
 					
 					tempVert.VertBones = _bones
 					tempVert.VertWeights = weights
+					
+					if (meshop.getVDataValue obj.mesh 26 faceVerts[v]) == 5.0 then ( append objEdgeVerts faceVerts[v] ) 
+					
 					append tempVert.VertFaceArray #(f)
 				)
 				
@@ -641,12 +694,65 @@ fn pso2VertOptimizer meshes =
 			)
 		)
 		
+		--Get Valid Vert Types and Size
+		validVertTypes = #()
+		vertTypeSize = 0 
+		append validVertTypes 0x0 --Position
+		vertTypeSize += 0xC
+		if objBonePalette > 1 then
+		(
+			append validVertTypes 0x1 --Bone Weights
+			vertTypeSize += 0x10
+		)
+		append validVertTypes 0x2 --Normal
+		vertTypeSize += 0xC
+		if UNRMExport == true then
+		(
+			append validVertTypes 0x21 --Binormals
+			append validVertTypes 0x20 --Tangents
+			vertTypeSize += 0x18
+		)
+		if pso2VertArr[1].VertColorArray[1][1] != undefined then
+		(
+			append validVertTypes 0x3 --Vert Color
+			vertTypeSize += 0x4
+		)
+		if pso2VertArr[1].VertColor2Array[1][1] != undefined then
+		(
+			append validVertTypes 0x4 --Vert Color 2?
+			vertTypeSize += 0x4
+		)
+		if objBonePalette > 1 then
+		(
+			append validVertTypes 0xb --Bone Indices
+			vertTypeSize += 0x4
+		)
+		if pso2VertArr[1].VertUV1Array[1][1] != undefined then
+		(
+			append validVertTypes 0x10 --Vert UV1
+			vertTypeSize += 0x8
+		)
+		if pso2VertArr[1].VertUV2Array[1][1] != undefined then
+		(
+			append validVertTypes 0x11 --Vert UV2
+			vertTypeSize += 0x8
+		)
+		if pso2VertArr[1].VertUV3Array[1][1] != undefined then
+		(
+			append validVertTypes 0x12 --Vert UV3
+			vertTypeSize += 0x8
+		)
+		
 		--append vertex, material, original mesh id, and face data to an array when done
-		tempMesh 				= pso2Mesh()
-		tempMesh.MeshMat 		= obj.material[GetFaceMatId obj.mesh 1]
-		tempMesh.MeshFaces  	= objFaces
-		tempMesh.MeshVerts 		= pso2VertArr
-		tempMesh.MeshId 		= (getUserProp bMesh[i] "meshId")
+		tempMesh 				 = pso2Mesh()
+		tempMesh.MeshMat 		 = obj.material[GetFaceMatId obj.mesh 1]
+		tempMesh.MeshFaces  	 = objFaces
+		tempMesh.MeshVerts 		 = pso2VertArr
+		tempMesh.MeshEdgeVerts   = objEdgeVerts
+		tempMesh.MeshBonePalette = objBonePalette
+		tempMesh.MeshValidVTypes = validVertTypes
+		tempMesh.MeshVertSize    = vertTypeSize
+		tempMesh.MeshId 		 = (getUserProp bMesh[i] "meshId")
 		append meshData tempMesh
 	)
 	
@@ -685,7 +791,7 @@ fn calcUNRMs meshes =
 	unrms
 )
 
-fn GeoExport aqpFile ResizeChecked ResizeValue YZRot =
+fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 (	
 	ftype = getFilenameType aqpFile
 	
@@ -702,7 +808,10 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot =
 	
 	--Check for used vertex types: (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
 		--Duplicate and separate vertices based on if multiple UV channels/VC channels exist for it. 
-	aqpMeshData = pso2VertOptimizer aqpMeshes
+	aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport
+	
+	--Get all unique mats
+	aqpMats = GetUniqueMats aqpMeshes
 	
 	--Loop through all meshes and store ids for vertices with the same location together. Create UNRM information from this (Optional to store UNRM?)
 	--unrmArray = CalcUNRMs aqpMeshes
@@ -802,57 +911,86 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot =
 	WriteLong pso2Model 0				--Reserve 0
 	WriteLong pso2Model aqpMeshData.count --Unknown Count (The following counts share a value)
 	WriteLong pso2Model aqpMeshData.count --VSET Count 
-	vSetOBJCOff = (ftell pso2Model)		--VSET Offset
-	WriteLong pso2Model 0
+	WriteLong pso2Model 0xC0			  --VSET Offset - We can write this one immediately since it's the first struct set and so it's at a set place in all models
 	WriteLong pso2Model aqpMeshData.count --PSET Count
 	pSetOBJCOff = (ftell pso2Model) 	--PSET Offset
 	WriteLong pso2Model 0
 	WriteLong pso2Model aqpMeshData.count --MESH Count; Count values stop being shared
 	meshOBJCOff = (ftell pso2Model) 	--MESH Offset
 	WriteLong pso2Model 0
-		--MATE Count
-		--MATE Offset
-		--REND Count
-		--REND Offset
-		--SHAD Count
-		--SHAD Offset
-		--TSTA Count
-		--TSTA Offset
-		--TSET Count
-		--TEXF Count
-		--TEXF Offset
-		--Field with Model Center xyz, 0, Bounding Radius, Model Center xyz again, 0, Max minus Min Point distance / 2 xyz, 0
-	WriteLong pso2Model aqpBounds.OrigX
-	WriteLong pso2Model aqpBounds.OrigY
-	WriteLong pso2Model aqpBounds.OrigZ
+	WriteLong pso2Model aqpMats.count   --MATE Count
+	mateOBJCOff = (ftell pso2Model)		--MATE Offset
 	WriteLong pso2Model 0
-	WriteLong pso2Model aqpBounds.Radius
-	WriteLong pso2Model aqpBounds.OrigX
-	WriteLong pso2Model aqpBounds.OrigY
-	WriteLong pso2Model aqpBounds.OrigZ
+	WriteLong pso2Model aqpMats.count 	--REND Count
+	rendOBJCOff = (ftell pso2Model)  	--REND Offset
 	WriteLong pso2Model 0
-	WriteLong pso2Model aqpBounds.DiffX
-	WriteLong pso2Model aqpBounds.DiffY
-	WriteLong pso2Model aqpBounds.DiffZ
+	WriteLong pso2Model aqpMats.count 	--SHAD Count
+	shadOBJCOff = (ftell pso2Model)		--SHAD Offset
 	WriteLong pso2Model 0
+	WriteLong pso2Model aqpMats.count*4	--TSTA Count - should be reliant on the shader technically, may fix at a later date.
+	tstaOBJCOff = (ftell pso2Model)		--TSTA Offset
+	WriteLong pso2Model 0
+	WriteLong pso2Model aqpMats.count	--TSET Count
+	tsetOBJCOff = (ftell pso2Model)		--TSET Offset
+	WriteLong pso2Model 0
+	WriteLong pso2Model aqpMats.count*4	--TEXF Count - same count as tsta
+	texfOBJCOff = (ftell pso2Model)		--TEXF Offset
+	WriteLong pso2Model 0
+	--Field with Model Center xyz, 0, Bounding Radius, Model Center xyz again, 0, Max minus Min Point distance / 2 xyz, 0
+	WriteFloat pso2Model aqpBounds.OrigX
+	WriteFloat pso2Model aqpBounds.OrigY
+	WriteFloat pso2Model aqpBounds.OrigZ
+	WriteLong pso2Model 0
+	WriteFloat pso2Model aqpBounds.Radius
+	WriteFloat pso2Model aqpBounds.OrigX
+	WriteFloat pso2Model aqpBounds.OrigY
+	WriteFloat pso2Model aqpBounds.OrigZ
+	WriteLong pso2Model 0
+	WriteFloat pso2Model aqpBounds.DiffX
+	WriteFloat pso2Model aqpBounds.DiffY
+	WriteFloat pso2Model aqpBounds.DiffZ
+	WriteFloat pso2Model 0
 	uNRMOff = (ftell pso2Model) --UNRM Offset (If available, usually only for player models?)
 	WriteLong pso2Model 0
 	
-	--VSET Struct Vertex Set
-		--Total size per chunk of vertex data
-		--Number of VTXE Structs (vertex data structs) per vertex
-		--Offset of VTXE
-		--Number of VTXL Structs/Vertices
-		--Offset of VTXL Structs
-		--Unknown 0
-		--Bone Palette 1 Bone Count    (May need to stay under 16? The second palette, if is one, often exceeds thhis of course)
-		--Bone Palette 1 Offset
-		--Unknown 1
-		--Unknown 2
-		--Unknown 3
-		--Bone Palette 2? Bone Count
-		--Bone Palette 2? Offset
+	VSetOffsets = #()
+	--VSET Struct Vertex Set(s)
+	for obj in aqpMeshData do
+	(
+		offs = VSetOff()
+	
+		WriteLong pso2Model obj.MeshVertSize			--Total size per chunk of vertex data
+		WriteLong pso2Model obj.MeshValidVTypes.count	--Number of VTXE Structs (vertex data structs) per vertex
+		offs.VTXEOff = (ftell pso2Model )	--Offset of VTXE
+		WriteLong pso2Model obj.MeshVerts.count		--Number of VTXL Structs/Vertices
+		offs.VTXLOff = (ftell pso2Model)	--Offset of VTXL Structs
+		WriteLong pso2Model 0
+		WriteLong pso2Model 0	--Unknown 0
+		if obj.MeshBonePalette.count > 1 then --Bone Palette 1 Bone Count    (May need to stay under 16?)
+		( 
+			WriteLong pso2Model obj.MeshBonePalette.count 
+		) else 
+		( 
+			WriteLong pso2Model 0 
+		)
+		offs.BPalOff = (ftell pso2Model)	--Bone Palette 1 Offset
+		WriteLong pso2Model 0
+		WriteLong pso2Model 0	--Unknown 1
+		WriteLong pso2Model 0	--Unknown 2
+		WriteLong pso2Model 0	--Unknown 3
+		if UNRMExport == true then	--Autosplit edge vertex count - Basically, vertices in the splitting process on the edges that were split. Unused on non unrm models?
+		(
+			WriteLong pso2Model obj.MeshEdgeVerts.count
+		) else
+		(
+			WriteLong pso2Model 0	
+		)	  
+		offs.EVertOff = (ftell pso2Model) --Autosplit edge vertex offset
+		WriteLong pso2Model 0
 		
+		append VSetOffsets offs
+	)
+	
 	--VTXE Struct - These define the types of data each vertex has 
 		--Data Type ID, by Sega's order (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
 		--Data Format ID (0x2 - UV FloatVector2) (0x3 - Various FloatVector3) (0x5 - Color, B G R A bytes)
