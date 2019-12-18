@@ -548,6 +548,9 @@ fn pso2VertOptimizer meshes UNRMExport =
 					if (meshop.getMapSupport obj.mesh -2) == true then
 					(
 						vcolor.alpha = (meshop.getMapVert $.mesh -2 (meshop.getMapFace $.mesh -2 1)[1]).x
+					) else 
+					(
+						vcolor.alpha = 0xFF;
 					)
 					append tempVert.VertColorArray vcolor
 				) else
@@ -562,6 +565,9 @@ fn pso2VertOptimizer meshes UNRMExport =
 					if (meshop.getMapSupport obj.mesh 5) == true then
 					(
 						vcolor.alpha = (meshop.getMapVert $.mesh 5 (meshop.getMapFace $.mesh 5 1)[1]).x
+					) else
+					(
+						vcolor.alpha = 0xFF;
 					)
 					append tempVert.VertColor2Array vcolor
 				) else
@@ -991,12 +997,62 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		append VSetOffsets offs
 	)
 	
-	--VTXE Struct - These define the types of data each vertex has 
-		--Data Type ID, by Sega's order (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
-		--Data Format ID (0x2 - UV FloatVector2) (0x3 - Various FloatVector3) (0x5 - Color, B G R A bytes)
-		--Position in Vertex Data (Vert  data has each VTXE type laid out in sequence for a given vertex before moving to the next. This is the relative to the beginning of a particular vertex's data.) 
-		--Reserve
-	--VTXL Struct - These are the vertex data structs defined in the VTXE before this
+	--VTXE Structs are written before their respective VTXL structs 
+	for obj in aqpMeshData do
+	(
+		vertRelAdd = 0 --Vertex relative address. We need to note down where each data struct for the vertex is relative to the start of the vertex
+		--VTXE Struct - These define the types of data each vertex has 
+		for type in obj.MeshValidVTypes do
+		(
+			curLength = 0
+			WriteLong pso2Model type	--Data Type ID, by Sega's order (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
+			case type of --Data Format ID (0x2 - UV FloatVector2) (0x3 - Various FloatVector3) (0x5 - Color, B G R A bytes)
+			(
+				0x0: (WriteLong pso2Model 3; curLength = 0xC)  --(0x0 Vertex Position) 
+				0x1: (WriteLong pso2Model 4; curLength = 0x10) --(0x1 Vertex Weights)
+				0x2: (WriteLong pso2Model 3; curLength = 0xC)  --(0x2 Vertex Normal)
+				0x3: (WriteLong pso2Model 5; curLength = 0x4)  --(0x3 Vertex Color)
+				0x4: (WriteLong pso2Model 5; curLength = 0x4)  --(0x4 Vertex Color 2?)
+				0xb: (WriteLong pso2Model 7; curLength = 0x4)  --(0xb Weight Index)
+				0x10: (WriteLong pso2Model 2; curLength = 0x8) --(0x10 UV1 Buffer)
+				0x11: (WriteLong pso2Model 2; curLength = 0x8) --(0x11 UV2 Buffer)
+				0x12: (WriteLong pso2Model 2; curLength = 0x8) --(0x12 UV3 Buffer)
+				0x20: (WriteLong pso2Model 3; curLength = 0x8) --(0x20 Tangents)
+				0x21: (WriteLong pso2Model 3; curLength = 0x8) --(0x21 Binormals)
+				default: print "Bad vert type!"
+			)
+			WriteLong pso2Model vertRelAdd --Position in Vertex Data (Vert  data has each VTXE type laid out in sequence for a given vertex before moving to the next. This is the relative to the beginning of a particular vertex's data.) 
+			WriteLong pso2Model 0	--Reserve
+			vertRelAdd += curLength
+		)
+		--VTXL Struct - These are the vertex data structs defined in the VTXE before this
+		for vert in obj.MeshVerts do
+		(
+			for type in obj.MeshValidVTypes do
+			(
+				case type of
+				(
+					0x0: (WriteLong pso2Model vert.VertPos.x; WriteLong pso2Model vert.VertPos.y; WriteLong pso2Model vert.VertPos.z)  --(0x0 Vertex Position) 
+					0x1: (WriteLong pso2Model vert.VertWeights[1]; WriteLong pso2Model VertWeights[2]; WriteLong pso2Model VertWeights[3]; WriteLong pso2Model VertWeights[4]) --(0x1 Vertex Weights)
+					0x2: (WriteLong pso2Model vert.VertNormal.x; WriteLong pso2Model vert.VertNormal.y; WriteLong pso2Model vert.VertNormal.z)  --(0x2 Vertex Normal)
+					0x3: (WriteLong pso2Model vert.VertColorArray[1].b; WriteLong pso2Model vert.VertColorArray[1].g; WriteLong pso2Model vert.VertColorArray[1].r; WriteLong pso2Model vert.VertColorArray[1].a)  --(0x3 Vertex Color)
+					0x4: (WriteLong pso2Model vert.VertColor2Array[1].b; WriteLong pso2Model vert.VertColor2Array[1].g; WriteLong pso2Model vert.VertColor2Array[1].r; WriteLong pso2Model vert.VertColor2Array[1].a)  --(0x4 Vertex Color 2?)
+					0xb: (WriteLong pso2Model vert.VertBones[1]; WriteLong pso2Model vert.VertBones[2]; WriteLong pso2Model vert.VertBones[3]; WriteLong pso2Model vert.VertBones[4])  --(0xb Weight Index)
+					0x10: (WriteLong pso2Model vert.VertUV1Array[1].x; WriteLong pso2Model vert.VertUV1Array[1].y) --(0x10 UV1 Buffer)
+					0x11: (WriteLong pso2Model vert.VertUV2Array[1].x; WriteLong pso2Model vert.VertUV2Array[1].y) --(0x11 UV2 Buffer)
+					0x12: (WriteLong pso2Model vert.VertUV3Array[1].x; WriteLong pso2Model vert.VertUV3Array[1].y) --(0x12 UV3 Buffer)
+					0x20: (WriteLong pso2Model vert.VertTangentArray[1].x; WriteLong pso2Model vert.VertTangentArray[1].y; WriteLong pso2Model vert.VertTangentArray[1].z) --(0x20 Tangents)
+					0x21: (WriteLong pso2Model vert.VertBinormalArray[1].x; WriteLong pso2Model vert.VertBinormalArray[1].y; WriteLong pso2Model vert.VertBinormalArray[1].z) --(0x21 Binormals)
+					default: print "Bad vert type!"
+				)
+			)
+		)
+		--Pad for alignment
+		while ( (mod (ftell pso2Anim) 0x10) != 0) do
+		(
+			WriteByte pso2Anim 0 --Write padding
+		)
+	)
 	
 	--PSET Structs - Struct to provide information on triangle strip sets
 	temp = (ftell pso2Model)
@@ -1040,15 +1096,22 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		(
 			WriteShort pso2Model strip
 		)
-		paddingLoops = 8 - (mod aqpStrips[i].count 8)
-		for i = 1 to paddingLoops do
+		--Pad for alignment
+		while ( (mod (ftell pso2Anim) 0x10) != 0) do
 		(
-			WriteShort pso2Model 0
+			WriteByte pso2Anim 0 --Write padding
 		)
 	)
 	
 	--MESH Structs
-		--Unk U16, 0 or 1
+	--PSET Structs - Struct to provide information on triangle strip sets
+	temp = (ftell pso2Model)
+	fseek pso2Model meshOBJCOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model (temp - fileOffset)
+	fseek pso2Model temp #seek_set                 --Return to current address
+	for obj in aqpMeshData do
+	(
+		--Unk U16, 0 or 10
 		--Unk U16, 0x11 or 0x14 often
 		--Unk U16, always 0?
 		--Unk U8, usually 0x63 or 0x64
@@ -1065,6 +1128,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		--Autogenerated base mesh dummy id. 0 if there's only one, presumably, though if multiple exist, the dummies are numbered. Dummy order seems arbitrary (ie. first num may be 6, followed by 2 in hierarchy etc.)
 		--Unk, often 0
 		--0
+	)
 	
 	--MATE Structs
 		--Material Diffuse Color Vector4
