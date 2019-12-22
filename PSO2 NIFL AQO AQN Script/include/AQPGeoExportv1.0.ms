@@ -9,6 +9,19 @@ ClearListener()
 FileIn @"MaxScriptExtensions\FileStreamReader.ms"
 FileIn @"MaxScriptExtensions\FileUtils.ms"
 FileIn @"UnusedBoneRemover.ms"
+FileIn @"AQNBoneImportv1.3.ms"
+
+struct matSetExtras
+(
+	ShaderList,
+	MatShaderIndex,
+	MatAlphaType,
+	MatPlayer,
+	TextureSets,
+	TextureIdSets,
+	TextureCount
+	
+)
 
 struct pSetOff 
 (
@@ -20,6 +33,12 @@ struct uNRMStruct
 (
 	MeshNum,
 	VertID
+)
+
+struct uNRMHolder
+(
+	UNRMs,
+	UNRMVertCount
 )
 
 struct aqpBounding
@@ -53,6 +72,7 @@ struct pso2Vert
 struct pso2Mesh
 (
 	MeshMat,
+	MeshMatId,
 	MeshFaces,
 	MeshVerts,
 	MeshEdgeVerts,
@@ -68,6 +88,18 @@ struct VSetOff
 	VTXLOff,
 	BPalOff,
 	EVertOff
+)
+
+fn WriteFixedLengthString stream str len =
+(
+	str = substring str 1 len -- avoid going over
+	extraSpace = len - (str.count) --calculate space left to 20 (if any)
+	WriteString stream str -- name
+	fseek pso2Model (-1) #seek_cur
+	for e = 1 to extraSpace do -- add padding to reach 0x20 if needed
+	(
+		WriteByte stream 0x0
+	)
 )
 
 fn originMinMax objList ResizeChecked ResizeValue YZRot =
@@ -172,23 +204,153 @@ fn originMinMax objList ResizeChecked ResizeValue YZRot =
 fn GetUniqueMats objList =
 (
 	matArray = #()
-	for obj in objList do
+	for obj = 1 to objList.count do
 	(
 		match = false
-		for m in matArray while match == false do
+		for m = 1 to matArray.count while match == false do
 		(
-			if obj.material == m then
+			if objList[obj].MeshMat == matArray[m] then
 			(
 				match = true
+				objList[obj].MeshMatId = m
 			)
 		)
 		if match == false then
 		(
-			append matArray obj.material
+			append matArray objList[obj].MeshMat
+			objList[obj].MeshMatId = matArray.count
 		)
 	)
 	
 	matArray
+)
+
+--Find shaders and alpha settings for given material set
+fn GetMatExtras aqpMats =
+(
+	texCount = 0
+	matExtras = matSetExtras()
+	for mat in aqpMats do
+	(
+		--Filterstring first ( ) for shadertype, second shadertype after "," inside shadertype ( ), filterstring { } for the alpha type. Append unique shaders and set the index for the respective materials. Append all alpha types
+		shaderSet = #()
+		alphaType = #()
+		strStart = findstring mat.name "("
+		if strStart != undefined then
+		(
+			strStart += 1
+			strLength = (findstring mat.name ")") 
+			if strLength != undefined then
+			(
+				strLength -= strStart
+				if strLength != 0 then
+				(
+					shaderSet = filterstring (substring mat.name strStart strLength) ","
+				) 
+			)
+		)
+		if shaderSet = undefined then
+		(
+			shaderSet[1] = "0100p"
+			shaderSet[2] = "0100"
+		)
+		
+		strStart = findstring mat.name "{"
+		if strStart != undefined then
+		(
+			strStart += 1
+			strLength = (findstring mat.name "}") 
+			if strLength != undefined then
+			(
+				strLength -= strStart
+				if strLength != 0 then
+				(
+					alphaType = substring mat.name strStart strLength
+				) 
+			)
+		) else 
+		(
+			alphaType = "blendalpha"
+		)
+		
+		plFlag = false
+		if matchPattern mat.name pattern:"*[pl]*" then
+		(
+			plFlag = true
+			append matExtras.MatPlayer true
+		) else
+		(
+			append matExtras.MatPlayer false
+		)
+		
+		shaderFound = undefined
+		for shd=1 to matExtras.ShaderList.count while shaderFound == undefined do
+		(
+			if matExtras.ShaderList[shd][0] == shaderSet[0] and matExtras.ShaderList[shd][1] == shaderSet[1] then
+			(
+				shaderFound = shd
+			)
+		)
+		if shaderFound == undefined then
+		(
+			append matExtras.ShaderList shaderSet
+			shaderFound = matExtras.ShaderList.count
+		)
+		
+		append matExtras.MatShaderIndex = shaderFound-1
+		append matExtras.MatAlphaType = alphaType
+		
+		--Grab textures and assemble texture sets
+		textureSet = #()
+		textureIdSet = #()
+		if plFlag == true then
+		(
+			for i = 1 to 4 do
+			(
+				append textureIdSet texCount
+				texCount +=1
+			)
+			append textureSet "pl_body_diffuse.dds"
+			append textureSet "pl_body_multi.dds"
+			append textureSet "pl_body_decal.dds"
+			append textureSet "pl_body_normal.dds"
+		) else
+		(
+			if mat.diffuseMap != undefined then
+			(
+				dif = (getFilenameFile mat.diffuseMap.filename) + ".dds"
+				append textureSet dif
+				append textureIdSet texCount
+				texCount += 1
+			)
+			if mat.specularMap != undefined then
+			(
+				spec = (getFilenameFile mat.specularMap.filename) + ".dds"
+				append textureSet spec
+				append textureIdSet texCount
+				texCount += 1
+			)
+			if mat.specularLevelMap != undefined then
+			(
+				specLev = (getFilenameFile mat.specularLevelMap.filename) + ".dds"
+				append textureSet specLev
+				append textureIdSet texCount
+				texCount += 1
+			)
+			if mat.bumpMap != undefined then
+			(
+				bump = (getFilenameFile mat.specularBumpMap.filename) + ".dds"
+				append textureSet bump
+				append textureIdSet texCount
+				texCount += 1
+			)
+		)
+		append TextureSets textureSet
+		append TextureIdSets textureIdSet
+	)
+	matExtras.TextureCount = texCount
+	
+	matExtras
 )
 
 fn GetFacesByMatId obj =
@@ -693,7 +855,7 @@ fn pso2VertOptimizer meshes UNRMExport =
 						append tempVert.VertFaceArray f
 						
 						pso2VertArr[pso2VertArr.count+1] = tempVert
-						append pso2VertArr[v].VertUNRMs pso2VertArr.count
+						--append pso2VertArr[v].VertUNRMs pso2VertArr.count
 						objFaces[f][v] = pso2VertArr.count
 					)
 				)
@@ -766,35 +928,56 @@ fn pso2VertOptimizer meshes UNRMExport =
 	meshData
 )
 
---Unused; Made for calculating pso2 unrms (vertices split from the same base vertex) from scene meshes. Final functionality calculated this in the vertex optimization function 
-fn calcUNRMs meshes =
+--Check vert positions, normals, and first UV coord sets in order to find UNRM candidates 
+fn calcUNRMs meshData =
 (
 	unrms = #()
-	for m=1 to meshes.count do
+	unrmVertCount = 0
+	
+	--boolean array to track progress
+	meshCheckArr = #()
+	for m = 1 to meshData.count do
 	(
-		for v=1 to (GetNumVerts meshes[m]) do
+		meshCheck = #()
+		for v = 1 to meshData[m].MeshVerts.count do
+		(
+			append meshCheck false
+		)
+		append meshCheckArr meshCheck
+	)
+	
+	--Go through all verts and check for matches. Only append UNRMs if there's more than one in the unrm temp struct (ie at least one match)
+	for m = 1 to meshData.count do
+	(
+		for v = 1 to meshData[m].MeshVerts.count do
 		(
 			unrm = #()
 			append unrm (uNRMStruct MeshNum:m VertId:v)
-			for n=m to meshes.count do
+			for n=m to meshData.count do
 			(
-				for w=1 to (GetNumVerts meshes[n]) do
+				for w=1 to meshData[n].MeshVerts.count do
 				(
-					if n==m and v==w then
+					if (meshCheckArr[n][w] == true or (m == n and v == w)) then
 					(
 						continue
 					)
-					if (GetVert meshes[m] v) == (GetVert meshes[n] w) then
+					if (meshCheckArr[m][v].VertPos == meshCheckArr[n][w].VertPos and meshCheckArr[m][v].VertNormal == meshCheckArr[n][w].VertNormal and meshCheckArr[m][v].VertUV1Array[1] == meshCheckArr[n][w].VertUV1Array[1]) then
 					(
-						append unrm (uNRMStruct MeshNum:m VertId:v)
+						meshCheckArr[n][w] = true
+						append unrm (uNRMStruct MeshNum:n VertId:w)
 					)
 				)
 			)
-			append unrms unrm
+			meshCheckArr[m][v] = true
+			if unrm.count > 1 then
+			(
+				unrmVertCount += unrm.count
+				append unrms unrm
+			)
 		)
 	)
 	
-	unrms
+	UNRMContainer = (uNRMHolder UNRMs:unrms UNRMVertCount:unrmVertCount)
 )
 
 fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
@@ -804,9 +987,30 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	startPath = getFilenamePath(getThisScriptFilename())
 	dotnet.loadAssembly (startPath + "\\NvTriStripDotNet.dll")
 	
-	--Split meshes by material - note: ReplaceVertexWeights automatically reevaluates weight(s) that do not total 1 by increasing the ratios of each existing weight proportionally to sum to 1. 
+	--Gather meshes and create dummies for them for export
 	baseMeshes = for g in geometry where g.parent == undefined and g.children.count == 0 collect g
-	for i=1 to baseMeshes.count do (setUserProp bMesh[i] "meshId" i)
+	boneList = GetPSO2BoneArray false
+	extraBoneList = #()
+	for i=1 to baseMeshes.count do 
+	(
+		setUserProp baseMeshes[i] "meshId" (i-1)
+		temp = dummy pos: ( [0, 0, 0] ) name: ( baseMeshes[i].name + "_dummy")
+		temp.parent = boneList.BoneList[1]
+		append extraBoneList temp
+		if boneList.BoneOrdering == undefined then 
+		(
+			temp.name = "(" + ((boneList.BoneList.count + i-1) as string) + ")" + temp.name
+		)
+		setUserProp temp "NodeID" (boneList.BoneList.count + i-1)
+	)
+	
+	--Export Bones
+	currentPath = getFilenamePath aqpFile
+	boneFileName = filterString (filenameFromPath aqpFile) "."
+	boneFileName = (currentPath + boneFileName[1] + ".aqn")
+	SkelExport boneFileName ResizeChecked ResizeValue YZRot
+	
+	--Split meshes by material - note: ReplaceVertexWeights automatically reevaluates weight(s) that do not total 1 by increasing the ratios of each existing weight proportionally to sum to 1. 
 	aqpMeshes = splitMeshByMaterial baseMeshes
 	
 	--Possible 16 bone limit per mesh? If so, split per that as well. Generate dummy nodes for each final mesh with one name and a number. Dummy nodes should be placed before physics nodes (though this may not be required)
@@ -816,11 +1020,17 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		--Duplicate and separate vertices based on if multiple UV channels/VC channels exist for it. 
 	aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport
 	
-	--Get all unique mats
-	aqpMats = GetUniqueMats aqpMeshes
+	unrmData = undefined
+	if UNRMExport == true then
+	(
+		unrmData = (calcUNRMs aqpMeshData)
+	)
 	
-	--Loop through all meshes and store ids for vertices with the same location together. Create UNRM information from this (Optional to store UNRM?)
-	--unrmArray = CalcUNRMs aqpMeshes
+	--Get all unique mats and assign the array index of each to the respective objects
+	aqpMats = GetUniqueMats aqpMeshData
+	
+	--Get all unique shaders from material, textures, texture sets, and alpha setting
+	aqpMatExtra = GetMatExtras aqpMats
 
 	--Calculate geometry bounds OBJC. As duplicated vertices and changed faces won't change this, we feed it the export prepped mesh array
 	aqpBounds = originMinMax aqpMeshes ResizeChecked ResizeValue YZRot
@@ -851,11 +1061,12 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	
 	pso2Model = fopen aqpFile "wb"
 	
+	relAddresses = #()
 	fileOffset = 0x20
 	--AFP Header
 	if (ftype != "aqo" and ftype != "tro") then
 	(
-		fileOffset += 0x30                 --add extra offset to our main offset
+		fileOffset += 0x40                 --add extra offset to our main offset
 		
 		WriteString pso2Model "afp"        -- Type
 		fseek pso2Model (-1) #seek_cur
@@ -873,8 +1084,8 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			WriteByte pso2Model 0x0
 		)
 		afpDataSizeOff = (ftell pso2Model) 
-		WriteLong pso2Model 0			   -- Filesize after write minus fileOffset aka 0x50
-		WriteLong pso2Model 0x30           -- afp added offset
+		WriteLong pso2Model 0			   -- Filesize after write minus fileOffset
+		WriteLong pso2Model 0x30           -- afp added offset?
 		WriteLong pso2Model 0              -- Filesize minus 0x10; This is the offset of the leading 0x10 of 0s before a second AFP file. This is filled regardless, however.
 		WriteString pso2Model ftype        -- Filetype
 		fseek pso2Model (-2) #seek_cur
@@ -909,8 +1120,8 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	WriteLong pso2Model 0xC2A			--0xC2A
 	WriteLong pso2Model 0xA4			--OBJC Size, always 0xA4
 	WriteLong pso2Model 0x17			--Unknown value, related to second value of MESH?	
-	maxVTXLOff = (ftell pso2Model)
-	WriteLong pso2Model 0				--Size of largest VTXL Vertex struct
+	maxVTXLOff = (ftell pso2Model); append relAddresses maxVTXLOff	--Size of largest VTXL Vertex struct
+	WriteLong pso2Model 0				
 	WriteLong pso2Model totalFaces		--Total Strip Face Indices count
 	WriteLong pso2Model 0				--Reserve 0
 	WriteLong pso2Model totalVertices	--Total VTXL/Vertex Count
@@ -919,28 +1130,28 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	WriteLong pso2Model aqpMeshData.count --VSET Count 
 	WriteLong pso2Model 0xC0			  --VSET Offset - We can write this one immediately since it's the first struct set and so it's at a set place in all models
 	WriteLong pso2Model aqpMeshData.count --PSET Count
-	pSetOBJCOff = (ftell pso2Model) 	--PSET Offset
+	pSetOBJCOff = (ftell pso2Model); append relAddresses pSetOBJCOff 	--PSET Offset
 	WriteLong pso2Model 0
 	WriteLong pso2Model aqpMeshData.count --MESH Count; Count values stop being shared
-	meshOBJCOff = (ftell pso2Model) 	--MESH Offset
+	meshOBJCOff = (ftell pso2Model); append relAddresses meshOBJCOff 	--MESH Offset
 	WriteLong pso2Model 0
 	WriteLong pso2Model aqpMats.count   --MATE Count
-	mateOBJCOff = (ftell pso2Model)		--MATE Offset
+	mateOBJCOff = (ftell pso2Model); append relAddresses mateOBJCOff 	--MATE Offset
 	WriteLong pso2Model 0
 	WriteLong pso2Model aqpMats.count 	--REND Count
-	rendOBJCOff = (ftell pso2Model)  	--REND Offset
+	rendOBJCOff = (ftell pso2Model); append relAddresses rendOBJCOff 	--REND Offset
 	WriteLong pso2Model 0
-	WriteLong pso2Model aqpMats.count 	--SHAD Count
-	shadOBJCOff = (ftell pso2Model)		--SHAD Offset
+	WriteLong pso2Model aqpMatExtra.ShaderList.count 	--SHAD Count
+	shadOBJCOff = (ftell pso2Model); append relAddresses shadOBJCOff 	--SHAD Offset
 	WriteLong pso2Model 0
-	WriteLong pso2Model aqpMats.count*4	--TSTA Count - should be reliant on the shader technically, may fix at a later date.
-	tstaOBJCOff = (ftell pso2Model)		--TSTA Offset
+	WriteLong pso2Model aqpMatExtra.TextureCount	--TSTA Count - should be reliant on the shader technically, may fix at a later date.
+	tstaOBJCOff = (ftell pso2Model); append relAddresses tstaOBJCOff 	--TSTA Offset
 	WriteLong pso2Model 0
 	WriteLong pso2Model aqpMats.count	--TSET Count
-	tsetOBJCOff = (ftell pso2Model)		--TSET Offset
+	tsetOBJCOff = (ftell pso2Model); append relAddresses tsetOBJCOff 	--TSET Offset
 	WriteLong pso2Model 0
-	WriteLong pso2Model aqpMats.count*4	--TEXF Count - same count as tsta
-	texfOBJCOff = (ftell pso2Model)		--TEXF Offset
+	WriteLong pso2Model aqpMatExtra.TextureCount	--TEXF Count - same count as tsta
+	texfOBJCOff = (ftell pso2Model); append relAddresses texfOBJCOff 	--TEXF Offset
 	WriteLong pso2Model 0
 	--Field with Model Center xyz, 0, Bounding Radius, Model Center xyz again, 0, Max minus Min Point distance / 2 xyz, 0
 	WriteFloat pso2Model aqpBounds.OrigX
@@ -956,7 +1167,10 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	WriteFloat pso2Model aqpBounds.DiffY
 	WriteFloat pso2Model aqpBounds.DiffZ
 	WriteFloat pso2Model 0
-	uNRMOff = (ftell pso2Model) --UNRM Offset (If available, usually only for player models?)
+	uNRMOff = (ftell pso2Model); append relAddresses uNRMOff 	--UNRM Offset (If available, usually only for player models?)
+	WriteLong pso2Model 0
+	--Padding
+	WriteLongLong pso2Model 0
 	WriteLong pso2Model 0
 	
 	VSetOffsets = #()
@@ -967,26 +1181,34 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	
 		WriteLong pso2Model obj.MeshVertSize			--Total size per chunk of vertex data
 		WriteLong pso2Model obj.MeshValidVTypes.count	--Number of VTXE Structs (vertex data structs) per vertex
-		offs.VTXEOff = (ftell pso2Model )	--Offset of VTXE
+		offs.VTXEOff = (ftell pso2Model); append relAddresses offs.VTXEOff 	--Offset of VTXE
 		WriteLong pso2Model obj.MeshVerts.count		--Number of VTXL Structs/Vertices
-		offs.VTXLOff = (ftell pso2Model)	--Offset of VTXL Structs
+		offs.VTXLOff = (ftell pso2Model); append relAddresses offs.VTXLOff 	--Offset of VTXL Structs
 		WriteLong pso2Model 0
 		WriteLong pso2Model 0	--Unknown 0
 		if obj.MeshBonePalette.count > 1 then --Bone Palette 1 Bone Count    (May need to stay under 16?)
 		( 
 			WriteLong pso2Model obj.MeshBonePalette.count 
+			append relAddresses (ftell pso2Model)
 		) else 
 		( 
 			WriteLong pso2Model 0 
 		)
-		offs.BPalOff = (ftell pso2Model)	--Bone Palette 1 Offset
+		offs.BPalOff = (ftell pso2Model) 		--Bone Palette 1 Offset
 		WriteLong pso2Model 0
 		WriteLong pso2Model 0	--Unknown 1
 		WriteLong pso2Model 0	--Unknown 2
 		WriteLong pso2Model 0	--Unknown 3
 		if UNRMExport == true then	--Autosplit edge vertex count - Basically, vertices in the splitting process on the edges that were split. Unused on non unrm models?
 		(
-			WriteLong pso2Model obj.MeshEdgeVerts.count
+			if obj.MeshEdgeVerts.count > 1 then
+			(
+				WriteLong pso2Model obj.MeshEdgeVerts.count
+				append relAddresses (ftell pso2Model)
+			) else
+			(
+				WriteLong pso2Model 0
+			)
 		) else
 		(
 			WriteLong pso2Model 0	
@@ -998,6 +1220,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	)
 	
 	--VTXE Structs are written before their respective VTXL structs 
+	biggestVTXL = 0
 	for obj in aqpMeshData do
 	(
 		vertRelAdd = 0 --Vertex relative address. We need to note down where each data struct for the vertex is relative to the start of the vertex
@@ -1024,6 +1247,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			WriteLong pso2Model vertRelAdd --Position in Vertex Data (Vert  data has each VTXE type laid out in sequence for a given vertex before moving to the next. This is the relative to the beginning of a particular vertex's data.) 
 			WriteLong pso2Model 0	--Reserve
 			vertRelAdd += curLength
+			if vertRelAdd > biggestVTXL then (biggestVTXL = vertRelAdd)
 		)
 		--VTXL Struct - These are the vertex data structs defined in the VTXE before this
 		for vert in obj.MeshVerts do
@@ -1048,11 +1272,19 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			)
 		)
 		--Pad for alignment
-		while ( (mod (ftell pso2Anim) 0x10) != 0) do
+		while ( (mod (ftell pso2Model) 0x10) != 0) do
 		(
-			WriteByte pso2Anim 0 --Write padding
+			WriteByte pso2Model 0 --Write padding
 		)
 	)
+	--Set largest VTXL in OBJC
+	temp = (ftell pso2Model)
+	fseek pso2Model maxVTXLOff #seek_set          -- Go back and fill in 
+	WriteLong pso2Model biggestVTXL
+	fseek pso2Model temp #seek_set                 --Return to current address
+	pSetOffs = #()
+	
+	
 	
 	--PSET Structs - Struct to provide information on triangle strip sets
 	temp = (ftell pso2Model)
@@ -1064,10 +1296,10 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	(
 		WriteLong pso2Model 0x2100                  --0x2100?
 		WriteLong pso2Model 0x1                     --0x1? Face type?
-		faceCountOff = (ftell pso2Model)
+		faceCountOff = (ftell pso2Model); append relAddresses faceCountOff
 		WriteLong pso2Model 0                       --FaceCount Offset
 		WriteLong pso2Model aqpStrips[i].count      --Pset face count
-		faceOff = (ftell pso2Model)
+		faceOff = (ftell pso2Model); append relAddresses faceOff
 		WriteLong pso2Model 0                       --Face Offset
 		append pSetOffs (pSetOff CountOff:FaceCountOff FaceOff:faceOff)
 	)
@@ -1097,120 +1329,304 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			WriteShort pso2Model strip
 		)
 		--Pad for alignment
-		while ( (mod (ftell pso2Anim) 0x10) != 0) do
+		while ( (mod (ftell pso2Model) 0x10) != 0) do
 		(
-			WriteByte pso2Anim 0 --Write padding
+			WriteByte pso2Model 0 --Write padding
 		)
 	)
 	
 	--MESH Structs
-	--PSET Structs - Struct to provide information on triangle strip sets
 	temp = (ftell pso2Model)
 	fseek pso2Model meshOBJCOff #seek_set          -- Go back and fill in address
 	WriteLong pso2Model (temp - fileOffset)
 	fseek pso2Model temp #seek_set                 --Return to current address
-	for obj in aqpMeshData do
+	for obj = 1 to aqpMeshData.count do
 	(
-		--Unk U16, 0 or 10
-		--Unk U16, 0x11 or 0x14 often
-		--Unk U16, always 0?
-		--Unk U8, usually 0x63 or 0x64
-		--Unk U8, usually 0x80
-		--Material Index for current mesh
-		--Render Index for current mesh
-		--Shader Index for current mesh
-		--Texture Set Index for current mesh
-		--Bone Index for autogenerated base mesh dummy; These are ordered before physics bones, but after normal bones. 
-			--Presumably just for debugging/organization normally, but also used for rigid weighting objects that didn't originally have bones
-			--Assumedly, meshes outside hierarchy are weighted to root while those with a hierarchy are placed as such while placing the node's mesh in the mesh data.
-		--VSET?, Mesh Index
-		--PSET?, Mesh Index
-		--Autogenerated base mesh dummy id. 0 if there's only one, presumably, though if multiple exist, the dummies are numbered. Dummy order seems arbitrary (ie. first num may be 6, followed by 2 in hierarchy etc.)
-		--Unk, often 0
-		--0
+		WriteShort pso2Model 0			--Unk U16, 0 or 10
+		WriteShort pso2Model 0x17		--Unk U16, 0x11 or 0x14 often
+		WriteShort pso2Model 0			--Unk U16, always 0?
+		WriteByte pso2Model 0x64		--Unk U8, usually 0x63 or 0x64
+		WriteByte pso2MOdel 0x80		--Unk U8, usually 0x80
+		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Material Index for current mesh
+		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Render Index for current mesh
+		WriteLong pso2Model aqpMatExtra.MatShaderIndex[obj]  --Shader Index for current mesh
+		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Texture Set Index for current mesh
+		WriteLong pso2Model (getUserProp "NodeID" extraBoneList[obj.MeshId+1])  --Bone Index for autogenerated base mesh dummy; These are ordered before physics bones, but after normal bones. 
+																				--Presumably just for debugging/organization normally, but also used for rigid weighting objects that didn't originally have bones
+																				--Assumedly, meshes outside hierarchy are weighted to root while those with a hierarchy are placed as such while placing the node's mesh in the mesh data.
+		WriteLong pso2Model obj --VSET?, Mesh Index
+		WriteLong pso2Model obj --PSET?, Mesh Index
+		WriteLong pso2Model obj.MeshId	--Autogenerated base mesh dummy id. 0 if there's only one, presumably, though if multiple exist, the dummies are numbered. Dummy order seems arbitrary (ie. first num may be 6, followed by 2 in hierarchy etc.)
+		WriteLong pso2Model 0 --Unk, often 0
+		WriteLong pso2Model 0 --0
 	)
 	
 	--MATE Structs
-		--Material Diffuse Color Vector4
-		--Material Specular Color Vector4
-		--Material Reflection Color? Vector4
-		--Material Color Vector4; Maybe Ambient?
-		--0
-		--Unk Float, often 8 or 32
-		--Unk Float, usually 1
-		--Unk Int, usually 100
-		--Unknown, usually 0
-		--20 Char String, "opaque", "hollow", "blendalpha"
-		--20 Char String, Material Name
+	temp = (ftell pso2Model)
+	fseek pso2Model mateOBJCOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model (temp - fileOffset)
+	fseek pso2Model temp #seek_set 
+	for mat = 1 to aqpMats do
+	(
+		--Material Diffuse Color Vector4 - RGBA format. "Alpha" value seems unused ingame
+		WriteFloat pso2Model (aqpMats[mat].diffuse.r / 255);WriteFloat pso2Model (aqpMats[mat].diffuse.g / 255);WriteFloat pso2Model (aqpMats[mat].diffuse.b / 255);WriteFloat pso2Model 1;
+		--Material Unknown Color? Vector4 - Defaults are .9,.9.9,1
+		WriteFloat pso2Model 0.9;WriteFloat pso2Model 0.9;WriteFloat pso2Model 0.9;WriteFloat pso2Model 1
+		--Material Unknown values? Third value can activate self illumination for the object. Vector4
+		WriteFloat pso2Model 0;WriteFloat pso2Model 0;WriteFloat pso2Model 0;WriteFloat pso2Model 1
+		--Material Unknown Values. Some values can activate self illumination for the object like above. Vector4
+		WriteFloat pso2Model 0;WriteFloat pso2Model 0;WriteFloat pso2Model 0;WriteFloat pso2Model 1
+		WriteLong pso2Model 0	--0
+		WriteFloat pso2Model 8	--Unk Float, often 8 or 32
+		WriteFloat pso2Model 1	--Unk Float, usually 1
+		WriteLong pso2Model 100	--Unk Int, usually 100
+		WriteLong pso2Model 0	--Unknown, usually 0
 		
-	--REND Structs
-		-- 0x1FF
-		-- 3 usually
-		-- 1 Two-sided, 0 Backface Cull, 2 used in persona live dance models but unknown
-		-- 1 Alpha blend enabling setting
-		-- 5 usually
-		-- 6 usually
-		-- 1 usually
-		-- 0 usually
-		-- 5 usually
-		-- 6 usually
-		-- 1 Another alpha setting? Maybe for multi/_s map?
-		-- 5 usually
-		-- 0-256, DXT 1 alpha setting? (assumedly value of alpha at which a pixel is rendered invisible vs fully visible)
-		-- 1 usually
-		-- 4 usually
-		-- 1 usually
+		--0x20 Char AlphaType String, "opaque", "hollow", "blendalpha","add" - Opaque is an opaque render, blendalpha is a proper alpha blending, add uses the alpha to make a glow effect
+		/*
+		alphaName = substring aqpMatExtra.MatAlphaType[mat] 1 0x20
+		extraSpace = 0x20 - (alphaName.count) --calculate space left to 20 (if any)
+		WriteString pso2Model alphaName -- name
+		fseek pso2Model (-1) #seek_cur
+		for e = 1 to extraSpace do -- add padding to reach 0x20 if needed
+		(
+			WriteByte pso2Model 0x0
+		)*/
+		WriteFixedLengthString pso2Model aqpMatExtra.MatAlphaType[mat] 0x20
 		
+		--Handle name string	-0x20 Char String, Material Name - we have to filter the shader and alphatype out  
+		matName = aqpMats[mat].name	
+		filter1 = (filterstring matName ")")
+		if (filter1.count > 1) then
+		(
+			matName = filter1[2]
+		)
+		filter2 = (filterstring matName "}")
+		if (filter2.count > 1) then
+		(
+			matName = filter2[2]
+		)
+		/*
+		matName = substring  matName 1 0x20 -- avoid going over
+		extraSpace = 0x20 - (matName.count) --calculate space left to 20 (if any)
+		WriteString pso2Model matName -- name
+		fseek pso2Model (-1) #seek_cur
+		for e = 1 to extraSpace do -- add padding to reach 0x20 if needed
+		(
+			WriteByte pso2Model 0x0
+		)*/	
+
+		WriteFixedLengthString pso2Model matName 0x20
+	)
+	--Only align in post
+	--Pad for alignment
+	while ( (mod (ftell pso2Model) 0x10) != 0) do
+	(
+		WriteByte pso2Model 0 --Write padding
+	)
+
+	--REND Structs - Will set up better if possible as things are figured out
+	for mat = 1 to aqpMats do
+	(
+		WriteLong pso2Model 255		-- 0x1FF
+		WriteLong pso2Model 3		-- 3 usually
+		WriteLong pso2Model aqpMats[mat].twoSided	-- 1 Two-sided, 0 Backface Cull, 2 used in persona live dance models but unknown
+		WriteLong pso2Model	1		-- 1 Alpha blend enabling setting
+		WriteLong pso2Model 5		-- 5 usually
+		WriteLong pso2Model 6		-- 6 usually
+		WriteLong pso2Model 1		-- 1 usually
+		WriteLong pso2Model 0		-- 0 usually
+		WriteLong pso2Model 5		-- 5 usually
+		WriteLong pso2Model 6		-- 6 usually
+		WriteLong pso2Model 1		-- 1 Another alpha setting? Maybe for multi/_s map?
+		WriteLong pso2Model 5		-- 5 usually
+		WriteLong pso2Model 0		-- 0-256, opaque alpha setting? (assumedly value of alpha at which a pixel is rendered invisible vs fully visible)
+		WriteLong pso2Model 1		-- 1 usually
+		WriteLong pso2Model 4		-- 4 usually
+		WriteLong pso2Model 1		-- 1 usually
+	)
+
 	--SHAD Structs
-		-- 0 always?
-		-- 0x20 Shadername string with p
-		-- 0x20 Shadername string sans p
-		-- 0 always?
-		
+	for shd = 1 to aqpMatExtra do
+	(
+		WriteLong pso2Model 0	-- 0 always?
+		WriteFixedLengthString pso2Model aqpMatExtra.ShaderList[shd][0] 0x20	-- 0x20 Shadername string with modifier
+		WriteFixedLengthString pso2Model aqpMatExtra.ShaderList[shd][1] 0x20	-- 0x20 Shadername string
+		WriteLong pso2Model 0	-- 0 always?
+		WriteLong pso2Model 0	-- 0 always (NIFL Tool doesn't account for this for some reason in its display output, causing a misalignment)
+	)
+	--Only align in post
+	--Pad for alignment
+	while ( (mod (ftell pso2Model) 0x10) != 0) do
+	(
+		WriteByte pso2Model 0 --Write padding
+	)	
+	
 	--TSTA Structs
-		-- 0x16
-		-- TSET Texture Usage Order, 0,1,2,3
-		-- UV set number (0 based), for env maps use -1 (FFFFFFFF)
-		-- 0                         Color related for these 3?
-		-- negative 0 float     Color related for these 3?
-		-- 0                         Color related for these 3?
-		-- 0
-		-- 0
-		-- 0
-		-- 1 or 3 sometimes
-		-- 1 or 3 sometimes
-		-- 1
-		-- 0 
-		-- 0
-		-- 0x20 string of texture name with extension
-		
+	for texSet in aqpMatExtra.TextureSets do
+	(
+		for tex = 1 to texSet.count do
+		(
+			WriteLong pso2Model 0x16	-- 0x16
+			WriteLong pso2Model tex		-- TSET Texture Usage Order, 0,1,2,3
+			-- UV set number (0 based), for env maps use -1 (FFFFFFFF)
+			texType = subString texSet[tex] texSet.count-5 2
+			if texSet[tex] != "pl_body_decal.dds" then
+			(
+				WriteLong pso2Model 2
+			) else
+			(
+				case texType of
+				(
+					"_k": 	 (WriteLong pso2Model 2)
+					"_t":	 (WriteLong pso2Model -1)
+					default: (WriteLong pso2Model 1)
+				)
+			)
+			WriteFloat pso2Model 0	-- 0                         Unknown float?
+			WriteFloat pso2Model -0	-- negative 0 float     Unknown float?
+			WriteFloat pso2Model 0	-- 0                         Unknown float?
+			WriteFloat pso2Model 0	-- 0
+			WriteFloat pso2Model 0	-- 0
+			WriteFloat pso2Model 0	-- 0
+			WriteLong pso2Model 1	-- 1 or 3 sometimes
+			WriteLong pso2Model 1	-- 1 or 3 sometimes
+			WriteLong pso2Model 1	-- 1
+			WriteLong pso2Model 0	-- 0 
+			WriteLong pso2Model 0	-- 0
+			WriteFixedLengthString pso2Model texSet[tex] 0x20	-- 0x20 string of texture name with extension
+		)
+	)
+	
 	--TSET Structs (Texture Set)
-		-- 0?
-		-- Used texture count
-		-- 0
-		-- 0
-		-- 0
-		--First Tex ID - If no tex id, -1 for any null tex id
-		--Second Tex ID
-		--Third Tex ID
-		--Fourth Tex ID
+	for texSet=1 to aqpMatExtra.TextureSets.count do
+	(
+		WriteLong pso2Model 0	-- 0?
+		texCount = aqpMatExtra.TextureSets[texSet].count
+		WriteLong pso2Model texCount	-- Used texture count
+		WriteLong pso2Model 0	-- 0
+		WriteLong pso2Model 0	-- 0
+		WriteLong pso2Model 0	-- 0
+		--Write tex ids
+		for i = 1 to texCount do
+		(
+			WriteLong pso2Model aqpMatExtra.TextureIdSets[i]
+		)
+		--Write unused tex ids as -1
+		for i = 1 to (4-texCount) do
+		(
+			WriteLong pso2Model -1
+		)
+	)
 		
 	--TEXF Structs
-		-- 0x20 texture name string
+	for texSet in aqpMatExtra.TextureSets do
+	(
+		for tex = 1 to texSet.count do
+		(
+			WriteFixedLengthString pso2Model texSet[tex] 0x20	-- 0x20 string of texture name with extension
+		)
+	)	
 	
-	--UNRM Struct - Links vertices split for various reasons (vertex colors per face, UVs, etc.)
-		-- Linked vertices amounts count (Each entry )
-		-- Linked vertices amounts offsets
-		-- VSet ID/Vertex ID list count
-		-- VSet ID list offset
-		-- Vertex ID offset
+	--Not all models need UNRMs
+	if UNRMExport == true then
+	(
+		temp = (ftell pso2Model)
+		fseek pso2Model uNRMOff #seek_set          -- Go back and fill in address
+		WriteLong pso2Model (temp - fileOffset)
+		fseek pso2Model temp #seek_set                 --Return to current address
+		pSetOffs = #()
 		
+		--UNRM Struct - Links vertices split for various reasons (vertex colors per face, UVs, etc.)
+		WriteLong pso2Model unrmData.UNRMs.count	--Vertex set count
+		UNRMVSetCountOff = (ftell pso2Model); append relAddresses (ftell pso2Model)		-- Get vertex set offset
+		WriteLong pso2Model 0
+		WriteLong pso2Model unrmData.UNRMVertCount	--Total verts in upcoming data
+		UNRMmeshIDOff = (ftell pso2Model); append relAddresses (ftell pso2Model)		--Offset of mesh id data
+		WriteLong pso2Model 0
+		UNRMvertIDOff = (ftell pso2Model); append relAddresses (ftell pso2Model)		-- Vertex ID data offset
+		WriteLong pso2Model 0
+		--Padding
+		WriteLongLong pso2Model 0
+		WriteLong pso2Model 0
+		
+		temp = (ftell pso2Model)
+		fseek pso2Model UNRMVSetCountOff #seek_set          -- Go back and fill in address
+		WriteLong pso2Model (temp - fileOffset)
+		fseek pso2Model temp #seek_set                 --Return to current address
+		--Begin vert set counts
+		for o in unrmData.UNRMs do
+		(
+			WriteLong pso2Model o.count
+		)
+		--Pad for alignment
+		while ( (mod (ftell pso2Model) 0x10) != 0) do
+		(
+			WriteByte pso2Model 0 --Write padding
+		)
+		
+		temp = (ftell pso2Model)
+		fseek pso2Model UNRMmeshIDOff #seek_set          -- Go back and fill in address
+		WriteLong pso2Model (temp - fileOffset)
+		fseek pso2Model temp #seek_set                 --Return to current address
+		--Begin vert mesh IDs
+		for o in unrmData.UNRMs do
+		(
+			for p in o do
+			(
+				WriteLong pso2Model p.MeshNum
+			)
+		)
+		--Pad for alignment
+		while ( (mod (ftell pso2Model) 0x10) != 0) do
+		(
+			WriteByte pso2Model 0 --Write padding
+		)
+
+		temp = (ftell pso2Model)
+		fseek pso2Model UNRMvertIDOff #seek_set          -- Go back and fill in address
+		WriteLong pso2Model (temp - fileOffset)
+		fseek pso2Model temp #seek_set                 --Return to current address
+		--Begin vert IDs
+		for o in unrmData.UNRMs do
+		(
+			for p in o do
+			(
+				WriteLong pso2Model p.VertID
+			)
+		)
+		--Pad for alignment
+		while ( (mod (ftell pso2Model) 0x10) != 0) do
+		(
+			WriteByte pso2Model 0 --Write padding
+		)
+		
+	)
+	
 	--NOF0
+	nofBegin = (ftell pso2Model) 
 	WriteString pso2Model "NOF0"    
 	fseek pso2Model (-1) #seek_cur 
-	NofSizeOff = (ftell pso2Model) 	-- Get size offset
+	nofSizeOff = (ftell pso2Model) 				-- Get size offset
 	WriteLong pso2Model 0
-	WriteLong pso2Model 0           -- Entry count
+	WriteLong pso2Model relAddresses.count		-- Entry count
+	WriteLong pso2Model 0						-- 0
+	nofSizeStart = (ftell pso2Model)
+	--Write Addresses
+	for rel in relAddresses do
+	(
+		WriteLong pso2Model (rel - fileOffset)
+	)
+	--Pad for alignment
+	while ( (mod (ftell pso2Model) 0x10) != 0) do
+	(
+		WriteByte pso2Model 0 --Write padding
+	)
+	nofSize = (ftell pso2Model) - nofSizeStart
+	temp = (ftell pso2Model)
+	fseek pso2Model UNRMvertIDOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model nofSize
+	fseek pso2Model temp #seek_set                 --Return to current address
 	
 	--NEND
 	WriteString pso2Model "NEND"
@@ -1219,5 +1635,25 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	for i = 1 to 3 do               -- Padding
 	(
 		WriteLongLong pso2Model 0
+	)
+	
+	--Fill remaining addresses
+	--Nifl Null addresses
+	fseek pso2Model nofMinus20Add #seek_set
+	WriteLong pso2Model (nofBegin - fileOffset)
+	WriteLong pso2Model (nofBegin - fileOffset + 0x20)
+	WriteLong pso2Model (nofSize + 0x10)
+	--REL addresses
+	fseek pso2Anim relSizeAdd #seek_set
+	WriteLong pso2Model (nofBegin - (relSizeAdd + 0x04) - 0x40)
+	
+	
+	fflush aqpFile
+	fclose aqpFile 
+	
+	--Cleanup
+	for o in extraBoneList do
+	(
+		delete o
 	)
 )
