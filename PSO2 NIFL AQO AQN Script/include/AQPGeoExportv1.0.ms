@@ -20,7 +20,12 @@ struct matSetExtras
 	TextureSets,
 	TextureIdSets,
 	TextureCount
-	
+)
+
+struct biTanArr
+(
+	vertsTangent,
+	vertsBinormal
 )
 
 struct pSetOff 
@@ -201,6 +206,99 @@ fn originMinMax objList ResizeChecked ResizeValue YZRot =
 	bounds = (aqpBounding OrigX:origin.x OrigY:origin.y OrigZ:origin.z Radius:radius DiffX:difference.x DiffY:difference.y DiffZ:difference.z)
 )
 
+--Adapted from this: https://forums.cgsociety.org/t/finding-bi-normals-tangents/975005/8 
+--Binormals and tangents for each face are calculated and each face's values for a particular vertex are summed and averaged for the result before being normalized
+--Though vertex position is used, due to the nature of the normalization applied during the process, resizing is unneeded.
+fn computeTangentSpace objFaces pso2VertArr YZRot = 
+(
+	local vertsBin = #()
+	local vertsTan = #()
+	--local vertsCounter = #()
+
+	for f = 1 to objfaces.count do
+	(
+		face = objFaces[f]
+		
+		local v1 = pso2VertArr[face[1]].VertPos
+		local v2 = pso2VertArr[face[2]].VertPos
+		local v3 = pso2VertArr[face[3]].VertPos
+		
+		local uv1 = pso2VertArr[face[1]].VertUV1Array[1]
+		local uv2 = pso2VertArr[face[2]].VertUV1Array[1]
+		local uv3 = pso2VertArr[face[3]].VertUV1Array[1]
+		
+		local dV1 = v1 - v2
+		local dV2 = v1 - v3
+
+		local dUV1 = uv1 - uv2
+		local dUV2 = uv1 - uv3
+		
+		local area = dUV1.x * dUV2.y - dUV1.y * dUV2.x
+		local sign = if area < 0 then -1 else 1
+		
+		local tangent = [0,0,1]
+
+		tangent.x = dV1.x * dUV2.y - dUV1.y * dV2.x
+		tangent.y = dV1.y * dUV2.y - dUV1.y * dV2.y
+		tangent.z = dV1.z * dUV2.y - dUV1.y * dV2.z
+
+		tangent = (normalize tangent) --* sign, not used for tangent 
+		
+		--Face normal
+		local u = v2 - v1
+		local v = v3 - v1
+		
+		fNormal = cross u v
+		
+		local normal = normalize fnormal
+		local binormal = (normalize (cross normal tangent)) * sign
+		
+		for i=1 to face.count do
+		(
+			if vertsBin[face[i]] == undefined then
+			(
+				vertsBin[face[i]] = binormal
+				vertsTan[face[i]] = tangent
+				--vertsCounter[face[i]] = 1
+			) else
+			(
+				vertsBin[face[i]] += binormal
+				vertsTan[face[i]] += tangent
+				--vertsCounter[face[i]] += 1
+			)
+		)
+	)
+	
+	for i = 1 to vertsBin.count do
+	(
+		if YZRot == true then
+		(
+			temp = vertsBin[i].y
+			vertsBin[i].y = vertsBin[i].z
+			vertsBin[i].z = -temp
+		)
+		vertsBin[i] = normalize vertsBin[i]
+	)
+	for i = 1 to vertsTan.count do
+	(
+		if YZRot == true then
+		(
+			temp = vertsTan[i].y
+			vertsTan[i].y = vertsTan[i].z
+			vertsTan[i].z = -temp
+		)
+		vertsTan[i] = normalize vertsTan[i]
+	)
+	
+	for v = 1 to vertsTan.count do
+	(
+		append pso2VertArr[v].VertBinormalArray vertsBin[v]
+		append pso2VertArr[v].VertTangentArray vertsTan[v]
+	)
+	
+	pso2VertArr
+)
+
 fn GetUniqueMats objList =
 (
 	matArray = #()
@@ -249,7 +347,7 @@ fn GetMatExtras aqpMats =
 				) 
 			)
 		)
-		if shaderSet = undefined then
+		if shaderSet == undefined then
 		(
 			shaderSet[1] = "0100p"
 			shaderSet[2] = "0100"
@@ -652,7 +750,7 @@ fn splitMeshByBoneCount meshes boneLimit =
 	splitMeshes
 )
 
-fn pso2VertOptimizer meshes UNRMExport =
+fn pso2VertOptimizer meshes UNRMExport YZRot =
 (
 	meshData = #()
 	for obj in meshes do
@@ -661,6 +759,8 @@ fn pso2VertOptimizer meshes UNRMExport =
 		fCount = (getNumFaces obj.mesh)
 		objFaces = #()
 		objEdgeVerts = #()
+		objBonePalette = #()
+		meshop.removeDegenerateFaces obj.mesh
 		
 		max modify mode
 		objSkin = obj.skin
@@ -679,6 +779,16 @@ fn pso2VertOptimizer meshes UNRMExport =
 				--Create temporary struct for comparison later
 				local tempVert = pso2Vert()
 				
+				--Initialize tempVert arrays
+				tempVert.VertBinormalArray = #()
+				tempVert.VertTangentArray = #()
+				tempVert.VertColorArray = #()
+				tempVert.VertColor2Array = #()
+				tempVert.VertUV1Array = #()
+				tempVert.VertUV2Array = #()
+				tempVert.VertUV3Array = #()
+				tempVert.VertFaceArray = #()
+				
 				--Set the vert if it's not there
 				if pso2VertArr[faceVerts[v]] == undefined then
 				(
@@ -691,16 +801,17 @@ fn pso2VertOptimizer meshes UNRMExport =
 					for b = 1 to wc do
 					(
 						append weights (skinOps.GetVertexWeight objSkin v b)
-						append _bones (skinOps.GetVertexWeightBoneID objSkin v b)
-						appendIfUnique objBonePalette (skinOps.GetVertexWeightBoneID objSkin v b)
+						boneId = (skinOps.GetVertexWeightBoneID objSkin v b)
+						append _bones boneId
+						appendIfUnique objBonePalette boneId
 					)
 					
 					tempVert.VertBones = _bones
 					tempVert.VertWeights = weights
 					
-					if (meshop.getVDataValue obj.mesh 26 faceVerts[v]) == 5.0 then ( append objEdgeVerts faceVerts[v] ) 
-					
+					if (meshop.getVDataChannelSupport obj.mesh 26) == true then (if (meshop.getVDataValue obj.mesh 26 faceVerts[v]) == 5.0 then ( append objEdgeVerts faceVerts[v] ))
 					append tempVert.VertFaceArray #(f)
+					pso2VertArr[faceVerts[v]] = tempVert
 				)
 				
 				--Get vert colors
@@ -737,33 +848,14 @@ fn pso2VertOptimizer meshes UNRMExport =
 					append tempVert.VertColor2Array undefined
 				)
 				
-				--Get first set of UVs and assign binormals and tangents
+				--Get first set of UVs 
 				if (meshop.getMapSupport obj.mesh 1) == true then
 				(
 					uv1 = (meshop.getMapVert obj.mesh 1 ((meshop.getMapFace obj.mesh 1 f)[v]))
 					append tempVert.VertUV1Array uv1
-					
-					--Calculate binormal + tangent, based off this post: https://forums.cgsociety.org/t/finding-bi-normals-tangents/975005/3
-					local dV1 = pso2VertArr[faceVerts[v]].VertPos.x - pso2VertArr[faceVerts[v]].VertPos.y
-					local dV2 = pso2VertArr[faceVerts[v]].VertPos.x - pso2VertArr[faceVerts[v]].VertPos.z
-					local dUV1 = uv1.x - uv1.y
-					local dUV2 = uv1.x - uv1.z
-					local sign = if (dUV1.x * dUV2.y - dUV1.y * dUV2.x) < 0 then -1 else 1
-					local tangent = [1,0,0]
-
-					tangent.x = dV1.x * dUV2.y - dUV1.y * dV2.x
-					tangent.y = dV1.y * dUV2.y - dUV1.y * dV2.y
-					tangent.z = dV1.z * dUV2.y - dUV1.y * dV2.z
-					tangent = (normalize tangent) * sign
-					local binormal = (normalize (cross pso2VertArr[faceVerts[v]].VertNormal tangent)) * sign
-					
-					append tempVert.VertBinormalArray binormal
-					append tempVert.VertTangentArray tangent
 				) else
 				(
 					append tempVert.VertUV1Array undefined
-					append tempVert.BinormalArray undefined
-					append tempVert.TangentArray undefined
 				)
 				
 				--Get second set of UVs
@@ -806,8 +898,6 @@ fn pso2VertOptimizer meshes UNRMExport =
 					--If not found, add it as its own entry
 					if arrCheck == false then
 					(
-						append pso2VertArr[faceVerts[v]].BinormalArray tempVert.BinormalArray 
-						append pso2VertArr[faceVerts[v]].TangentArray tempVert.TangentArray 
 						append pso2VertArr[faceVerts[v]].VertColorArray tempVert.VertColorArray 
 						append pso2VertArr[faceVerts[v]].VertColor2Array tempVert.VertColor2Array 
 						append pso2VertArr[faceVerts[v]].VertUV1Array tempVert.VertUV1Array 
@@ -823,7 +913,8 @@ fn pso2VertOptimizer meshes UNRMExport =
 		--Retrieve and adjust face data, creating new vertices when necessary. When creating vertices, note down all new ids with the old ids in an array for unrms
 		for f = 1 to fCount do
 		(
-			faceVerts = objFaces[f]
+			faceVerts = #()
+			faceVerts[1] = objFaces[f][1]; faceVerts[2] = objFaces[f][2]; faceVerts[3] = objFaces[f][3]
 			for v in faceVerts do
 			(
 				--loop through verts and access pso2VertArr with them. If the vert for that face isn't the first vertdata set for that vertex, create a new pso2Vert at end of vertarray with that data.
@@ -845,8 +936,6 @@ fn pso2VertOptimizer meshes UNRMExport =
 						tempVert.VertWeights = pso2VertArr[v].VertWeights
 						tempVert.VertBones = pso2VertArr[v].VertBones
 						tempVert.VertNormal = pso2VertArr[v].VertNormal
-						append tempVert.VertBinormalArray   pso2VertArr[v].VertBinormalArray[vertData]
-						append tempVert.VertTangentArray  	pso2VertArr[v].VertTangentArray[vertData]
 						append tempVert.VertColorArray  	pso2VertArr[v].VertColorArray[vertData]
 						append tempVert.VertColor2Array  	pso2VertArr[v].VertColor2Array[vertData]
 						append tempVert.VertUV1Array  		pso2VertArr[v].VertUV1Array[vertData]
@@ -862,12 +951,14 @@ fn pso2VertOptimizer meshes UNRMExport =
 			)
 		)
 		
+		pso2VertArr = computeTangentSpace objFaces pso2VertArr YZRot
+		
 		--Get Valid Vert Types and Size
 		validVertTypes = #()
 		vertTypeSize = 0 
 		append validVertTypes 0x0 --Position
 		vertTypeSize += 0xC
-		if objBonePalette > 1 then
+		if objBonePalette.count > 1 then
 		(
 			append validVertTypes 0x1 --Bone Weights
 			vertTypeSize += 0x10
@@ -880,32 +971,32 @@ fn pso2VertOptimizer meshes UNRMExport =
 			append validVertTypes 0x20 --Tangents
 			vertTypeSize += 0x18
 		)
-		if pso2VertArr[1].VertColorArray[1][1] != undefined then
+		if pso2VertArr[1].VertColorArray[1] != undefined then
 		(
 			append validVertTypes 0x3 --Vert Color
 			vertTypeSize += 0x4
 		)
-		if pso2VertArr[1].VertColor2Array[1][1] != undefined then
+		if pso2VertArr[1].VertColor2Array[1] != undefined then
 		(
 			append validVertTypes 0x4 --Vert Color 2?
 			vertTypeSize += 0x4
 		)
-		if objBonePalette > 1 then
+		if objBonePalette.count > 1 then
 		(
 			append validVertTypes 0xb --Bone Indices
 			vertTypeSize += 0x4
 		)
-		if pso2VertArr[1].VertUV1Array[1][1] != undefined then
+		if pso2VertArr[1].VertUV1Array[1] != undefined then
 		(
 			append validVertTypes 0x10 --Vert UV1
 			vertTypeSize += 0x8
 		)
-		if pso2VertArr[1].VertUV2Array[1][1] != undefined then
+		if pso2VertArr[1].VertUV2Array[1] != undefined then
 		(
 			append validVertTypes 0x11 --Vert UV2
 			vertTypeSize += 0x8
 		)
-		if pso2VertArr[1].VertUV3Array[1][1] != undefined then
+		if pso2VertArr[1].VertUV3Array[1] != undefined then
 		(
 			append validVertTypes 0x12 --Vert UV3
 			vertTypeSize += 0x8
@@ -920,7 +1011,7 @@ fn pso2VertOptimizer meshes UNRMExport =
 		tempMesh.MeshBonePalette = objBonePalette
 		tempMesh.MeshValidVTypes = validVertTypes
 		tempMesh.MeshVertSize    = vertTypeSize
-		tempMesh.MeshId 		 = (getUserProp bMesh[i] "meshId")
+		tempMesh.MeshId 		 = (getUserProp obj "meshId")
 		append meshData tempMesh
 	)
 	
@@ -961,7 +1052,7 @@ fn calcUNRMs meshData =
 					(
 						continue
 					)
-					if (meshCheckArr[m][v].VertPos == meshCheckArr[n][w].VertPos and meshCheckArr[m][v].VertNormal == meshCheckArr[n][w].VertNormal and meshCheckArr[m][v].VertUV1Array[1] == meshCheckArr[n][w].VertUV1Array[1]) then
+					if (meshData[m].MeshVerts[v].VertPos == meshData[m].MeshVerts[v].VertPos and meshData[m].MeshVerts[v].VertNormal == meshData[m].MeshVerts[v].VertNormal and meshData[m].MeshVerts[v].VertUV1Array[1] == meshData[m].MeshVerts[v].VertUV1Array[1]) then
 					(
 						meshCheckArr[n][w] = true
 						append unrm (uNRMStruct MeshNum:n VertId:w)
@@ -1016,9 +1107,15 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	--Possible 16 bone limit per mesh? If so, split per that as well. Generate dummy nodes for each final mesh with one name and a number. Dummy nodes should be placed before physics nodes (though this may not be required)
 	aqpMeshes = splitMeshByBoneCount aqpMeshes 16
 	
+	--Get rid of bad faces, just in case
+	for aqpMesh in aqpMeshes do
+	(
+		meshop.removeDegenerateFaces aqpMesh
+	)
+	
 	--Check for used vertex types: (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
 		--Duplicate and separate vertices based on if multiple UV channels/VC channels exist for it. 
-	aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport
+	aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport YZRot
 	
 	unrmData = undefined
 	if UNRMExport == true then
