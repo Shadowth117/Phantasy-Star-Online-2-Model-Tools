@@ -17,9 +17,11 @@ struct matSetExtras
 	MatShaderIndex,
 	MatAlphaType,
 	MatPlayer,
+	MatDiffuseColor,
 	TextureSets,
 	TextureIdSets,
-	TextureCount
+	TextureCount,
+	TwoSided
 )
 
 struct biTanArr
@@ -100,7 +102,7 @@ fn WriteFixedLengthString stream str len =
 	str = substring str 1 len -- avoid going over
 	extraSpace = len - (str.count) --calculate space left to 20 (if any)
 	WriteString stream str -- name
-	fseek pso2Model (-1) #seek_cur
+	fseek pso2Model (-2) #seek_cur
 	for e = 1 to extraSpace do -- add padding to reach 0x20 if needed
 	(
 		WriteByte stream 0x0
@@ -324,18 +326,29 @@ fn GetUniqueMats objList =
 )
 
 --Find shaders and alpha settings for given material set
-fn GetMatExtras aqpMats =
+fn GetMatExtras aqpMats difWhite =
 (
 	texCount = 0
 	matExtras = matSetExtras()
+	
+	matExtras.ShaderList = #()
+	matExtras.MatShaderIndex = #()
+	matExtras.MatAlphaType = #()
+	matExtras.MatDiffuseColor = #()
+	matExtras.MatPlayer = #()
+	matExtras.TextureSets = #()
+	matExtras.TextureIdSets = #()
+	matExtras.TwoSided = #()
+	
 	for mat in aqpMats do
 	(
 		--Filterstring first ( ) for shadertype, second shadertype after "," inside shadertype ( ), filterstring { } for the alpha type. Append unique shaders and set the index for the respective materials. Append all alpha types
-		shaderSet = #()
+		shaderSet = undefined
 		alphaType = #()
 		strStart = findstring mat.name "("
 		if strStart != undefined then
 		(
+			shaderSet = #()
 			strStart += 1
 			strLength = (findstring mat.name ")") 
 			if strLength != undefined then
@@ -349,8 +362,9 @@ fn GetMatExtras aqpMats =
 		)
 		if shaderSet == undefined then
 		(
-			shaderSet[1] = "0100p"
-			shaderSet[2] = "0100"
+			shaderSet = #()
+			shaderSet[1] = "0301p"
+			shaderSet[2] = "0301"
 		)
 		
 		strStart = findstring mat.name "{"
@@ -395,12 +409,25 @@ fn GetMatExtras aqpMats =
 			shaderFound = matExtras.ShaderList.count
 		)
 		
-		append matExtras.MatShaderIndex = shaderFound-1
-		append matExtras.MatAlphaType = alphaType
+		append matExtras.MatShaderIndex (shaderFound-1)
+		append matExtras.MatAlphaType alphaType
+		
+		try(
+			if mat.twoSided == true then
+			(
+				append matExtras.TwoSided 1
+			) else
+			(
+				append matExtras.TwoSided 0
+			)
+		) catch (
+			append matExtras.TwoSided 0
+		)
 		
 		--Grab textures and assemble texture sets
 		textureSet = #()
 		textureIdSet = #()
+		difColorsGrabbed = false
 		if plFlag == true then
 		(
 			for i = 1 to 4 do
@@ -414,37 +441,62 @@ fn GetMatExtras aqpMats =
 			append textureSet "pl_body_normal.dds"
 		) else
 		(
-			if mat.diffuseMap != undefined then
+			if mat == undefined then
 			(
-				dif = (getFilenameFile mat.diffuseMap.filename) + ".dds"
-				append textureSet dif
-				append textureIdSet texCount
-				texCount += 1
-			)
-			if mat.specularMap != undefined then
+				for i = 1 to 3 do
+				(
+					append textureIdSet texCount
+					texCount +=1
+				)
+				append textureSet "generic_tex_d.dds"
+				append textureSet "generic_tex_s.dds"
+				append textureSet "generic_tex_n.dds"
+			) else
 			(
-				spec = (getFilenameFile mat.specularMap.filename) + ".dds"
-				append textureSet spec
-				append textureIdSet texCount
-				texCount += 1
-			)
-			if mat.specularLevelMap != undefined then
-			(
-				specLev = (getFilenameFile mat.specularLevelMap.filename) + ".dds"
-				append textureSet specLev
-				append textureIdSet texCount
-				texCount += 1
-			)
-			if mat.bumpMap != undefined then
-			(
-				bump = (getFilenameFile mat.specularBumpMap.filename) + ".dds"
-				append textureSet bump
-				append textureIdSet texCount
-				texCount += 1
+				if mat.diffuseMap != undefined then
+				(
+					dif = (getFilenameFile mat.diffuseMap.filename) + ".dds"
+					if difWhite == false then
+					(
+						append matExtras.MatDiffuseColor mat.diffuse
+						difColorsGrabbed = true
+					)
+					append textureSet dif
+					append textureIdSet texCount
+					texCount += 1
+				)
+				if mat.specularMap != undefined then
+				(
+					spec = (getFilenameFile mat.specularMap.filename) + ".dds"
+					append textureSet spec
+					append textureIdSet texCount
+					texCount += 1
+				)
+				if mat.specularLevelMap != undefined then
+				(
+					specLev = (getFilenameFile mat.specularLevelMap.filename) + ".dds"
+					append textureSet specLev
+					append textureIdSet texCount
+					texCount += 1
+				)
+				if mat.bumpMap != undefined then
+				(
+					bump = (getFilenameFile mat.specularBumpMap.filename) + ".dds"
+					append textureSet bump
+					append textureIdSet texCount
+					texCount += 1
+				)
 			)
 		)
-		append TextureSets textureSet
-		append TextureIdSets textureIdSet
+		append matExtras.TextureSets textureSet
+		append matExtras.TextureIdSets textureIdSet
+		
+		--Default to white if not defined or if white mode is on
+		if difColorsGrabbed == false or difWhite == true then
+		(
+			append matExtras.MatDiffuseColor (color 255 255 255 255)
+		)
+		
 	)
 	matExtras.TextureCount = texCount
 	
@@ -801,9 +853,14 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 					for b = 1 to wc do
 					(
 						append weights (skinOps.GetVertexWeight objSkin v b)
-						boneId = (skinOps.GetVertexWeightBoneID objSkin v b)
+						boneId = (skinOps.GetVertexWeightBoneID objSkin v b)-1
 						append _bones boneId
 						appendIfUnique objBonePalette boneId
+					)
+					for i = 1 to (4 - wc) do
+					(
+						append weights 0
+						append _bones 0
 					)
 					
 					tempVert.VertBones = _bones
@@ -1002,9 +1059,23 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 			vertTypeSize += 0x8
 		)
 		
+		tempMat = obj.material
+		matId = obj.material[GetFaceMatId obj.mesh 1]
+		--get true material if needed - A face's mat id in max will be used for its multimaterial and each successive level of multimaterial
+		while ((classof tempMat) == Multimaterial) do
+		(
+			if tempMat.count >= matId then
+			(
+				tempMat = tempMat[matId]
+			) else
+			(
+				tempMat = tempMat[tempMat.count]
+			)
+		)
+		
 		--append vertex, material, original mesh id, and face data to an array when done
 		tempMesh 				 = pso2Mesh()
-		tempMesh.MeshMat 		 = obj.material[GetFaceMatId obj.mesh 1]
+		tempMesh.MeshMat 		 = tempMat
 		tempMesh.MeshFaces  	 = objFaces
 		tempMesh.MeshVerts 		 = pso2VertArr
 		tempMesh.MeshEdgeVerts   = objEdgeVerts
@@ -1071,9 +1142,13 @@ fn calcUNRMs meshData =
 	UNRMContainer = (uNRMHolder UNRMs:unrms UNRMVertCount:unrmVertCount)
 )
 
-fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
+fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 (	
-	ftype = getFilenameType aqpFile
+	
+	fName = (filenameFromPath aqpFile)
+	realFType = (substring (getFilenameType aqpFile) 2 3)
+	fName[fName.count] = "o" 
+	fType = (substring (getFilenameType fName) 2 3)
 	
 	startPath = getFilenamePath(getThisScriptFilename())
 	dotnet.loadAssembly (startPath + "\\NvTriStripDotNet.dll")
@@ -1085,14 +1160,18 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	for i=1 to baseMeshes.count do 
 	(
 		setUserProp baseMeshes[i] "meshId" (i-1)
-		temp = dummy pos: ( [0, 0, 0] ) name: ( baseMeshes[i].name + "_dummy")
+		temp = (getNodeByName (baseMeshes[i].name + "_dummy"))
+		if  temp == undefined then
+		(
+			temp = dummy pos: ( [0, 0, 0] ) name: ( baseMeshes[i].name + "_dummy")
+		)
 		temp.parent = boneList.BoneList[1]
 		append extraBoneList temp
 		if boneList.BoneOrdering == undefined then 
 		(
-			temp.name = "(" + ((boneList.BoneList.count + i-1) as string) + ")" + temp.name
+			temp.name = "(" + ((boneList.BoneList.count + i-2) as string) + ")" + temp.name
 		)
-		setUserProp temp "NodeID" (boneList.BoneList.count + i-1)
+		setUserProp temp "NodeID" (boneList.BoneList.count + i-2)
 	)
 	
 	--Export Bones
@@ -1127,7 +1206,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	aqpMats = GetUniqueMats aqpMeshData
 	
 	--Get all unique shaders from material, textures, texture sets, and alpha setting
-	aqpMatExtra = GetMatExtras aqpMats
+	aqpMatExtra = GetMatExtras aqpMats difWhite
 
 	--Calculate geometry bounds OBJC. As duplicated vertices and changed faces won't change this, we feed it the export prepped mesh array
 	aqpBounds = originMinMax aqpMeshes ResizeChecked ResizeValue YZRot
@@ -1160,33 +1239,28 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	
 	relAddresses = #()
 	fileOffset = 0x20
+	
 	--AFP Header
-	if (ftype != "aqo" and ftype != "tro") then
+	if (realFType != "aqo" and realFType != "tro") then
 	(
 		fileOffset += 0x40                 --add extra offset to our main offset
-		
 		WriteString pso2Model "afp"        -- Type
 		fseek pso2Model (-1) #seek_cur
 		WriteByte pso2Model 0 
-		WriteLong pso2Model 1              -- AFP container filecount. Seems to be used for level of detail models in observed cases; game simply won't try using LOD models if not provided
+		WriteLong pso2Model 1              -- AFP container filecount. Seems to be used for level of detail models in observed cases; game simply won't try using LOD models if not provided. May be used in level geometry variants?
 		WriteLong pso2Model 0              -- Reserve
 		WriteLong pso2Model 1              -- Always 1
-		WriteString pso2Model fname        -- Model filename
+		WriteFixedLengthString pso2Model fName 0x20        -- Model filename
 		fseek pso2Model (-2) #seek_cur
 		WriteByte pso2Model 0x6F           -- Change aqp/trp to aqo/tro text. Game reads files the same regardless of aqo vs tro in observed cases, but good to be safe.
-		
-		extraSpace = 0x20 - (fname.count)  -- calculate space left to 0x20 (if any)
-		for e = 1 to extraSpace do 		   -- add padding to reach 0x20 if needed
-		(
-			WriteByte pso2Model 0x0
-		)
 		afpDataSizeOff = (ftell pso2Model) 
-		WriteLong pso2Model 0			   -- Filesize after write minus fileOffset
+		WriteLong pso2Model 0			   -- Filesize after write minus 0x50
 		WriteLong pso2Model 0x30           -- afp added offset?
+		afpNextFileOff = (ftell pso2Model)
 		WriteLong pso2Model 0              -- Filesize minus 0x10; This is the offset of the leading 0x10 of 0s before a second AFP file. This is filled regardless, however.
-		WriteString pso2Model ftype        -- Filetype
-		fseek pso2Model (-2) #seek_cur
-		WriteByte pso2Model 0x6F           -- Change aqp/trp to aqo/tro text. These two spots are technically the only spots where aqp/aqo and trp/tro are differentiated in the file.
+		WriteString pso2Model fType        -- Filetype
+		fseek pso2Model (-1) #seek_cur
+		WriteByte pso2Model 0x0			   -- 0
 	)
 	
 	--NIFL Header
@@ -1279,6 +1353,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		WriteLong pso2Model obj.MeshVertSize			--Total size per chunk of vertex data
 		WriteLong pso2Model obj.MeshValidVTypes.count	--Number of VTXE Structs (vertex data structs) per vertex
 		offs.VTXEOff = (ftell pso2Model); append relAddresses offs.VTXEOff 	--Offset of VTXE
+		WriteLong pso2Model 0
 		WriteLong pso2Model obj.MeshVerts.count		--Number of VTXL Structs/Vertices
 		offs.VTXLOff = (ftell pso2Model); append relAddresses offs.VTXLOff 	--Offset of VTXL Structs
 		WriteLong pso2Model 0
@@ -1353,17 +1428,17 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			(
 				case type of
 				(
-					0x0: (WriteLong pso2Model vert.VertPos.x; WriteLong pso2Model vert.VertPos.y; WriteLong pso2Model vert.VertPos.z)  --(0x0 Vertex Position) 
-					0x1: (WriteLong pso2Model vert.VertWeights[1]; WriteLong pso2Model VertWeights[2]; WriteLong pso2Model VertWeights[3]; WriteLong pso2Model VertWeights[4]) --(0x1 Vertex Weights)
-					0x2: (WriteLong pso2Model vert.VertNormal.x; WriteLong pso2Model vert.VertNormal.y; WriteLong pso2Model vert.VertNormal.z)  --(0x2 Vertex Normal)
-					0x3: (WriteLong pso2Model vert.VertColorArray[1].b; WriteLong pso2Model vert.VertColorArray[1].g; WriteLong pso2Model vert.VertColorArray[1].r; WriteLong pso2Model vert.VertColorArray[1].a)  --(0x3 Vertex Color)
-					0x4: (WriteLong pso2Model vert.VertColor2Array[1].b; WriteLong pso2Model vert.VertColor2Array[1].g; WriteLong pso2Model vert.VertColor2Array[1].r; WriteLong pso2Model vert.VertColor2Array[1].a)  --(0x4 Vertex Color 2?)
-					0xb: (WriteLong pso2Model vert.VertBones[1]; WriteLong pso2Model vert.VertBones[2]; WriteLong pso2Model vert.VertBones[3]; WriteLong pso2Model vert.VertBones[4])  --(0xb Weight Index)
-					0x10: (WriteLong pso2Model vert.VertUV1Array[1].x; WriteLong pso2Model vert.VertUV1Array[1].y) --(0x10 UV1 Buffer)
-					0x11: (WriteLong pso2Model vert.VertUV2Array[1].x; WriteLong pso2Model vert.VertUV2Array[1].y) --(0x11 UV2 Buffer)
-					0x12: (WriteLong pso2Model vert.VertUV3Array[1].x; WriteLong pso2Model vert.VertUV3Array[1].y) --(0x12 UV3 Buffer)
-					0x20: (WriteLong pso2Model vert.VertTangentArray[1].x; WriteLong pso2Model vert.VertTangentArray[1].y; WriteLong pso2Model vert.VertTangentArray[1].z) --(0x20 Tangents)
-					0x21: (WriteLong pso2Model vert.VertBinormalArray[1].x; WriteLong pso2Model vert.VertBinormalArray[1].y; WriteLong pso2Model vert.VertBinormalArray[1].z) --(0x21 Binormals)
+					0x0: (WriteFloat pso2Model vert.VertPos.x; WriteFloat pso2Model vert.VertPos.y; WriteFloat pso2Model vert.VertPos.z)  --(0x0 Vertex Position) 
+					0x1: (WriteFloat pso2Model vert.VertWeights[1]; WriteFloat pso2Model vert.VertWeights[2]; WriteFloat pso2Model vert.VertWeights[3]; WriteFloat pso2Model vert.VertWeights[4]) --(0x1 Vertex Weights)
+					0x2: (WriteFloat pso2Model vert.VertNormal.x; WriteFloat pso2Model vert.VertNormal.y; WriteFloat pso2Model vert.VertNormal.z)  --(0x2 Vertex Normal)
+					0x3: (WriteByte pso2Model vert.VertColorArray[1].b; WriteByte pso2Model vert.VertColorArray[1].g; WriteByte pso2Model vert.VertColorArray[1].r; WriteByte pso2Model vert.VertColorArray[1].a)  --(0x3 Vertex Color)
+					0x4: (WriteByte pso2Model vert.VertColor2Array[1].b; WriteByte pso2Model vert.VertColor2Array[1].g; WriteByte pso2Model vert.VertColor2Array[1].r; WriteByte pso2Model vert.VertColor2Array[1].a)  --(0x4 Vertex Color 2?)
+					0xb: (WriteByte pso2Model vert.VertBones[1]; WriteByte pso2Model vert.VertBones[2]; WriteByte pso2Model vert.VertBones[3]; WriteByte pso2Model vert.VertBones[4])  --(0xb Weight Index)
+					0x10: (WriteFloat pso2Model vert.VertUV1Array[1].x; WriteFloat pso2Model vert.VertUV1Array[1].y) --(0x10 UV1 Buffer)
+					0x11: (WriteFloat pso2Model vert.VertUV2Array[1].x; WriteFloat pso2Model vert.VertUV2Array[1].y) --(0x11 UV2 Buffer)
+					0x12: (WriteFloat pso2Model vert.VertUV3Array[1].x; WriteFloat pso2Model vert.VertUV3Array[1].y) --(0x12 UV3 Buffer)
+					0x20: (WriteFloat pso2Model vert.VertTangentArray[1].x; WriteFloat pso2Model vert.VertTangentArray[1].y; WriteFloat pso2Model vert.VertTangentArray[1].z) --(0x20 Tangents)
+					0x21: (WriteFloat pso2Model vert.VertBinormalArray[1].x; WriteFloat pso2Model vert.VertBinormalArray[1].y; WriteFloat pso2Model vert.VertBinormalArray[1].z) --(0x21 Binormals)
 					default: print "Bad vert type!"
 				)
 			)
@@ -1399,6 +1474,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		faceOff = (ftell pso2Model); append relAddresses faceOff
 		WriteLong pso2Model 0                       --Face Offset
 		append pSetOffs (pSetOff CountOff:FaceCountOff FaceOff:faceOff)
+		WriteLong pso2Model 0
 	)
 	
 	--Pad as needed
@@ -1413,9 +1489,9 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		--Fill in addresses
 		temp = (ftell pso2Model)
 		fseek pso2Model pSetOffs[i].CountOff #seek_set
-		WriteLong pso2Model (temp - fileOffset - 0x10)
-		fseek pso2Model pSetOffs[i].FaceOff #seek_set
 		WriteLong pso2Model (temp - fileOffset)
+		fseek pso2Model pSetOffs[i].FaceOff #seek_set
+		WriteLong pso2Model (temp - fileOffset + 0x10)
 		fseek pso2Model temp #seek_set
 		--Write Face data
 		WriteLong pso2Model aqpStrips[i].count --Face count
@@ -1439,21 +1515,21 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	fseek pso2Model temp #seek_set                 --Return to current address
 	for obj = 1 to aqpMeshData.count do
 	(
-		WriteShort pso2Model 0			--Unk U16, 0 or 10
 		WriteShort pso2Model 0x17		--Unk U16, 0x11 or 0x14 often
-		WriteShort pso2Model 0			--Unk U16, always 0?
+		WriteShort pso2Model 0			--Unk U16, 0 or 10
+		WriteByte pso2Model 0x80		--Unk U8, usually 0x80
 		WriteByte pso2Model 0x64		--Unk U8, usually 0x63 or 0x64
-		WriteByte pso2MOdel 0x80		--Unk U8, usually 0x80
+		WriteShort pso2Model 0			--Unk U16, always 0?
 		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Material Index for current mesh
 		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Render Index for current mesh
-		WriteLong pso2Model aqpMatExtra.MatShaderIndex[obj]  --Shader Index for current mesh
+		WriteLong pso2Model aqpMatExtra.MatShaderIndex[aqpMeshData[obj].MeshMatId]  --Shader Index for current mesh
 		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Texture Set Index for current mesh
-		WriteLong pso2Model (getUserProp "NodeID" extraBoneList[obj.MeshId+1])  --Bone Index for autogenerated base mesh dummy; These are ordered before physics bones, but after normal bones. 
+		WriteLong pso2Model (getUserProp extraBoneList[aqpMeshData[obj].MeshId+1] "NodeID")  --Bone Index for autogenerated base mesh dummy; These are ordered before physics bones, but after normal bones. 
 																				--Presumably just for debugging/organization normally, but also used for rigid weighting objects that didn't originally have bones
 																				--Assumedly, meshes outside hierarchy are weighted to root while those with a hierarchy are placed as such while placing the node's mesh in the mesh data.
 		WriteLong pso2Model obj --VSET?, Mesh Index
 		WriteLong pso2Model obj --PSET?, Mesh Index
-		WriteLong pso2Model obj.MeshId	--Autogenerated base mesh dummy id. 0 if there's only one, presumably, though if multiple exist, the dummies are numbered. Dummy order seems arbitrary (ie. first num may be 6, followed by 2 in hierarchy etc.)
+		WriteLong pso2Model aqpMeshData[obj].MeshId	--Autogenerated base mesh dummy id. 0 if there's only one, presumably, though if multiple exist, the dummies are numbered. Dummy order seems arbitrary (ie. first num may be 6, followed by 2 in hierarchy etc.)
 		WriteLong pso2Model 0 --Unk, often 0
 		WriteLong pso2Model 0 --0
 	)
@@ -1463,10 +1539,10 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	fseek pso2Model mateOBJCOff #seek_set          -- Go back and fill in address
 	WriteLong pso2Model (temp - fileOffset)
 	fseek pso2Model temp #seek_set 
-	for mat = 1 to aqpMats do
+	for mat = 1 to aqpMats.count do
 	(
 		--Material Diffuse Color Vector4 - RGBA format. "Alpha" value seems unused ingame
-		WriteFloat pso2Model (aqpMats[mat].diffuse.r / 255);WriteFloat pso2Model (aqpMats[mat].diffuse.g / 255);WriteFloat pso2Model (aqpMats[mat].diffuse.b / 255);WriteFloat pso2Model 1;
+		WriteFloat pso2Model (aqpMatExtra.MatDiffuseColor[mat].r / 255);WriteFloat pso2Model (aqpMatExtra.MatDiffuseColor[mat].g / 255);WriteFloat pso2Model (aqpMatExtra.MatDiffuseColor[mat].b / 255);WriteFloat pso2Model 1;
 		--Material Unknown Color? Vector4 - Defaults are .9,.9.9,1
 		WriteFloat pso2Model 0.9;WriteFloat pso2Model 0.9;WriteFloat pso2Model 0.9;WriteFloat pso2Model 1
 		--Material Unknown values? Third value can activate self illumination for the object. Vector4
@@ -1480,15 +1556,6 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		WriteLong pso2Model 0	--Unknown, usually 0
 		
 		--0x20 Char AlphaType String, "opaque", "hollow", "blendalpha","add" - Opaque is an opaque render, blendalpha is a proper alpha blending, add uses the alpha to make a glow effect
-		/*
-		alphaName = substring aqpMatExtra.MatAlphaType[mat] 1 0x20
-		extraSpace = 0x20 - (alphaName.count) --calculate space left to 20 (if any)
-		WriteString pso2Model alphaName -- name
-		fseek pso2Model (-1) #seek_cur
-		for e = 1 to extraSpace do -- add padding to reach 0x20 if needed
-		(
-			WriteByte pso2Model 0x0
-		)*/
 		WriteFixedLengthString pso2Model aqpMatExtra.MatAlphaType[mat] 0x20
 		
 		--Handle name string	-0x20 Char String, Material Name - we have to filter the shader and alphatype out  
@@ -1503,15 +1570,6 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		(
 			matName = filter2[2]
 		)
-		/*
-		matName = substring  matName 1 0x20 -- avoid going over
-		extraSpace = 0x20 - (matName.count) --calculate space left to 20 (if any)
-		WriteString pso2Model matName -- name
-		fseek pso2Model (-1) #seek_cur
-		for e = 1 to extraSpace do -- add padding to reach 0x20 if needed
-		(
-			WriteByte pso2Model 0x0
-		)*/	
 
 		WriteFixedLengthString pso2Model matName 0x20
 	)
@@ -1522,12 +1580,16 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		WriteByte pso2Model 0 --Write padding
 	)
 
+	temp = (ftell pso2Model)
+	fseek pso2Model rendOBJCOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model (temp - fileOffset)
+	fseek pso2Model temp #seek_set 
 	--REND Structs - Will set up better if possible as things are figured out
-	for mat = 1 to aqpMats do
+	for mat = 1 to aqpMats.count do
 	(
-		WriteLong pso2Model 255		-- 0x1FF
+		WriteLong pso2Model 0x1FF	-- 0x1FF
 		WriteLong pso2Model 3		-- 3 usually
-		WriteLong pso2Model aqpMats[mat].twoSided	-- 1 Two-sided, 0 Backface Cull, 2 used in persona live dance models but unknown
+		WriteLong pso2Model aqpMatExtra.TwoSided[mat]	-- 1 Two-sided, 0 Backface Cull, 2 used in persona live dance models but unknown
 		WriteLong pso2Model	1		-- 1 Alpha blend enabling setting
 		WriteLong pso2Model 5		-- 5 usually
 		WriteLong pso2Model 6		-- 6 usually
@@ -1543,12 +1605,16 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		WriteLong pso2Model 1		-- 1 usually
 	)
 
+	temp = (ftell pso2Model)
+	fseek pso2Model shadOBJCOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model (temp - fileOffset)
+	fseek pso2Model temp #seek_set 
 	--SHAD Structs
-	for shd = 1 to aqpMatExtra do
+	for shd = 1 to aqpMatExtra.ShaderList.count do
 	(
 		WriteLong pso2Model 0	-- 0 always?
-		WriteFixedLengthString pso2Model aqpMatExtra.ShaderList[shd][0] 0x20	-- 0x20 Shadername string with modifier
-		WriteFixedLengthString pso2Model aqpMatExtra.ShaderList[shd][1] 0x20	-- 0x20 Shadername string
+		WriteFixedLengthString pso2Model aqpMatExtra.ShaderList[shd][1] 0x20	-- 0x20 Shadername string with modifier
+		WriteFixedLengthString pso2Model aqpMatExtra.ShaderList[shd][2] 0x20	-- 0x20 Shadername string
 		WriteLong pso2Model 0	-- 0 always?
 		WriteLong pso2Model 0	-- 0 always (NIFL Tool doesn't account for this for some reason in its display output, causing a misalignment)
 	)
@@ -1559,6 +1625,10 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		WriteByte pso2Model 0 --Write padding
 	)	
 	
+	temp = (ftell pso2Model)
+	fseek pso2Model tstaOBJCOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model (temp - fileOffset)
+	fseek pso2Model temp #seek_set 
 	--TSTA Structs
 	for texSet in aqpMatExtra.TextureSets do
 	(
@@ -1567,8 +1637,14 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			WriteLong pso2Model 0x16	-- 0x16
 			WriteLong pso2Model tex		-- TSET Texture Usage Order, 0,1,2,3
 			-- UV set number (0 based), for env maps use -1 (FFFFFFFF)
-			texType = subString texSet[tex] texSet.count-5 2
-			if texSet[tex] != "pl_body_decal.dds" then
+			if texSet[tex].count >= 7 then
+			(
+				texType = subString texSet[tex] (texSet[tex].count-5) 2
+			) else
+			(
+				texType = "_d"
+			)
+			if texSet[tex] == "pl_body_decal.dds" then
 			(
 				WriteLong pso2Model 2
 			) else
@@ -1594,7 +1670,17 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			WriteFixedLengthString pso2Model texSet[tex] 0x20	-- 0x20 string of texture name with extension
 		)
 	)
+	--Pad for alignment
+	while ( (mod (ftell pso2Model) 0x10) != 0) do
+	(
+		WriteByte pso2Model 0 --Write padding
+	)
 	
+	
+	temp = (ftell pso2Model)
+	fseek pso2Model tsetOBJCOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model (temp - fileOffset)
+	fseek pso2Model temp #seek_set 
 	--TSET Structs (Texture Set)
 	for texSet=1 to aqpMatExtra.TextureSets.count do
 	(
@@ -1607,7 +1693,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		--Write tex ids
 		for i = 1 to texCount do
 		(
-			WriteLong pso2Model aqpMatExtra.TextureIdSets[i]
+			WriteLong pso2Model aqpMatExtra.TextureIdSets[texSet][i]
 		)
 		--Write unused tex ids as -1
 		for i = 1 to (4-texCount) do
@@ -1615,7 +1701,16 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			WriteLong pso2Model -1
 		)
 	)
-		
+	--Pad for alignment
+	while ( (mod (ftell pso2Model) 0x10) != 0) do
+	(
+		WriteByte pso2Model 0 --Write padding
+	)
+	
+	temp = (ftell pso2Model)
+	fseek pso2Model texfOBJCOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model (temp - fileOffset)
+	fseek pso2Model temp #seek_set 		
 	--TEXF Structs
 	for texSet in aqpMatExtra.TextureSets do
 	(
@@ -1624,6 +1719,11 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 			WriteFixedLengthString pso2Model texSet[tex] 0x20	-- 0x20 string of texture name with extension
 		)
 	)	
+	--Pad for alignment
+	while ( (mod (ftell pso2Model) 0x10) != 0) do
+	(
+		WriteByte pso2Model 0 --Write padding
+	)
 	
 	--Not all models need UNRMs
 	if UNRMExport == true then
@@ -1720,10 +1820,14 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		WriteByte pso2Model 0 --Write padding
 	)
 	nofSize = (ftell pso2Model) - nofSizeStart
-	temp = (ftell pso2Model)
-	fseek pso2Model UNRMvertIDOff #seek_set          -- Go back and fill in address
-	WriteLong pso2Model nofSize
-	fseek pso2Model temp #seek_set                 --Return to current address
+	
+	if UNRMExport == true then
+	(
+		temp = (ftell pso2Model)
+		fseek pso2Model UNRMvertIDOff #seek_set          -- Go back and fill in address
+		WriteLong pso2Model nofSize
+		fseek pso2Model temp #seek_set                 --Return to current address
+	)
 	
 	--NEND
 	WriteString pso2Model "NEND"
@@ -1734,7 +1838,16 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 		WriteLongLong pso2Model 0
 	)
 	
+	fEnd = (ftell pso2Model)
 	--Fill remaining addresses
+	--afp Null addresses
+	if (realFType != "aqo" and realFType != "tro") then
+	(
+		fseek pso2Model afpDataSizeOff #seek_set
+		WriteLong pso2Model (fEnd-0x50)
+		fseek pso2Model afpNextFileOff #seek_set
+		WriteLong pso2Model (fEnd-0x10)
+	)
 	--Nifl Null addresses
 	fseek pso2Model nofMinus20Add #seek_set
 	WriteLong pso2Model (nofBegin - fileOffset)
@@ -1753,4 +1866,6 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport =
 	(
 		delete o
 	)
+	
+	print "Success!"
 )
