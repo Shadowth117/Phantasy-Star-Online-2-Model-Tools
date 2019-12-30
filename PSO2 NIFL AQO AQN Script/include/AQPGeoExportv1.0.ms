@@ -65,6 +65,7 @@ struct pso2Vert
 	VertWeights,
 	VertBones,
 	VertNormal,
+	--VertRendNormalArray,
 	VertBinormalArray,
 	VertTangentArray,
 	VertColorArray,
@@ -99,11 +100,12 @@ struct VSetOff
 
 fn WriteFixedLengthString stream str len =
 (
+	len -= 1
 	str = substring str 1 len -- avoid going over
-	extraSpace = len - (str.count) --calculate space left to 20 (if any)
+	extraSpace = len - (str.count) --calculate space left to len
 	WriteString stream str -- name
-	fseek pso2Model (-2) #seek_cur
-	for e = 1 to extraSpace do -- add padding to reach 0x20 if needed
+	fseek pso2Model (-1) #seek_cur
+	for e = 1 to (extraSpace) do -- add padding if needed
 	(
 		WriteByte stream 0x0
 	)
@@ -184,13 +186,13 @@ fn originMinMax objList ResizeChecked ResizeValue YZRot =
 	--Recalculate based on scale as needed
 	if ResizeChecked == true then
 	(
-		origin.x *= ResizeValue
-		origin.y *= ResizeValue
-		origin.z *= ResizeValue
-		radius *= ResizeValue
-		difference.x *= ResizeValue
-		difference.y *= ResizeValue
-		difference.z *= ResizeValue
+		origin.x *= (1 / ResizeValue)
+		origin.y *= (1 / ResizeValue)
+		origin.z *= (1 / ResizeValue)
+		radius *= (1 / ResizeValue)
+		difference.x *= (1 / ResizeValue)
+		difference.y *= (1 / ResizeValue)
+		difference.z *= (1 / ResizeValue)
 	)
 	
 	--Handle YZ orientating as needed
@@ -213,89 +215,106 @@ fn originMinMax objList ResizeChecked ResizeValue YZRot =
 --Though vertex position is used, due to the nature of the normalization applied during the process, resizing is unneeded.
 fn computeTangentSpace objFaces pso2VertArr YZRot = 
 (
-	local vertsBin = #()
-	local vertsTan = #()
-	--local vertsCounter = #()
-
-	for f = 1 to objfaces.count do
+	if pso2VertArr[1].VertUV1Array[1] != undefined then
 	(
-		face = objFaces[f]
-		
-		local v1 = pso2VertArr[face[1]].VertPos
-		local v2 = pso2VertArr[face[2]].VertPos
-		local v3 = pso2VertArr[face[3]].VertPos
-		
-		local uv1 = pso2VertArr[face[1]].VertUV1Array[1]
-		local uv2 = pso2VertArr[face[2]].VertUV1Array[1]
-		local uv3 = pso2VertArr[face[3]].VertUV1Array[1]
-		
-		local dV1 = v1 - v2
-		local dV2 = v1 - v3
+		local vertsBin = #()
+		local vertsTan = #()
+		local vertsNorm = #()
+		--local vertsCounter = #()
 
-		local dUV1 = uv1 - uv2
-		local dUV2 = uv1 - uv3
-		
-		local area = dUV1.x * dUV2.y - dUV1.y * dUV2.x
-		local sign = if area < 0 then -1 else 1
-		
-		local tangent = [0,0,1]
-
-		tangent.x = dV1.x * dUV2.y - dUV1.y * dV2.x
-		tangent.y = dV1.y * dUV2.y - dUV1.y * dV2.y
-		tangent.z = dV1.z * dUV2.y - dUV1.y * dV2.z
-
-		tangent = (normalize tangent) --* sign, not used for tangent 
-		
-		--Face normal
-		local u = v2 - v1
-		local v = v3 - v1
-		
-		fNormal = cross u v
-		
-		local normal = normalize fnormal
-		local binormal = (normalize (cross normal tangent)) * sign
-		
-		for i=1 to face.count do
+		for f = 1 to objfaces.count do
 		(
-			if vertsBin[face[i]] == undefined then
+			face = objFaces[f]
+			
+			local v1 = pso2VertArr[face[1]].VertPos
+			local v2 = pso2VertArr[face[2]].VertPos
+			local v3 = pso2VertArr[face[3]].VertPos
+			
+			local uv1 = pso2VertArr[face[1]].VertUV1Array[1]
+			local uv2 = pso2VertArr[face[2]].VertUV1Array[1]
+			local uv3 = pso2VertArr[face[3]].VertUV1Array[1]
+			
+			local dV1 = v1 - v2
+			local dV2 = v1 - v3
+
+			local dUV1 = uv1 - uv2
+			local dUV2 = uv1 - uv3
+			
+			local area = dUV1.x * dUV2.y - dUV1.y * dUV2.x
+			local sign = if area < 0 then -1 else 1
+			
+			local tangent = [0,0,1]
+
+			tangent.x = dV1.x * dUV2.y - dUV1.y * dV2.x
+			tangent.y = dV1.y * dUV2.y - dUV1.y * dV2.y
+			tangent.z = dV1.z * dUV2.y - dUV1.y * dV2.z
+
+			tangent = (normalize tangent) * sign 
+			
+			--Face normal
+			local u = v2 - v1
+			local v = v3 - v1
+			
+			fNormal = cross u v
+			
+			local normal = normalize fnormal
+			local binormal = (normalize (cross normal tangent)) * sign
+			
+			for i=1 to face.count do
 			(
-				vertsBin[face[i]] = binormal
-				vertsTan[face[i]] = tangent
-				--vertsCounter[face[i]] = 1
-			) else
-			(
-				vertsBin[face[i]] += binormal
-				vertsTan[face[i]] += tangent
-				--vertsCounter[face[i]] += 1
+				if vertsBin[face[i]] == undefined then
+				(
+					vertsBin[face[i]] = binormal
+					vertsTan[face[i]] = tangent
+					vertsNorm[face[i]] = normal
+					--vertsCounter[face[i]] = 1
+				) else
+				(
+					vertsBin[face[i]] += binormal
+					vertsTan[face[i]] += tangent
+					vertsNorm[face[i]] += normal
+					--vertsCounter[face[i]] += 1
+				)
 			)
 		)
-	)
-	
-	for i = 1 to vertsBin.count do
-	(
-		if YZRot == true then
+		
+		for i = 1 to vertsNorm.count do
 		(
-			temp = vertsBin[i].y
-			vertsBin[i].y = vertsBin[i].z
-			vertsBin[i].z = -temp
-		)
-		vertsBin[i] = normalize vertsBin[i]
-	)
-	for i = 1 to vertsTan.count do
-	(
-		if YZRot == true then
+			if YZRot == true then
+			(
+				temp = vertsNorm[i].y
+				vertsNorm[i].y = vertsNorm[i].z
+				vertsNorm[i].z = -temp
+			)
+			vertsNorm[i] = normalize vertsNorm[i]
+		)	
+		for i = 1 to vertsBin.count do
 		(
-			temp = vertsTan[i].y
-			vertsTan[i].y = vertsTan[i].z
-			vertsTan[i].z = -temp
+			if YZRot == true then
+			(
+				temp = vertsBin[i].y
+				vertsBin[i].y = vertsBin[i].z
+				vertsBin[i].z = -temp
+			)
+			vertsBin[i] = normalize vertsBin[i]
 		)
-		vertsTan[i] = normalize vertsTan[i]
-	)
-	
-	for v = 1 to vertsTan.count do
-	(
-		append pso2VertArr[v].VertBinormalArray vertsBin[v]
-		append pso2VertArr[v].VertTangentArray vertsTan[v]
+		for i = 1 to vertsTan.count do
+		(
+			if YZRot == true then
+			(
+				temp = vertsTan[i].y
+				vertsTan[i].y = vertsTan[i].z
+				vertsTan[i].z = -temp
+			)
+			vertsTan[i] = normalize vertsTan[i]
+		)
+		
+		for v = 1 to vertsTan.count do
+		(
+			append pso2VertArr[v].VertBinormalArray vertsBin[v]
+			append pso2VertArr[v].VertTangentArray vertsTan[v]
+			--gc light:false delayed:false
+		)
 	)
 	
 	pso2VertArr
@@ -398,7 +417,7 @@ fn GetMatExtras aqpMats difWhite =
 		shaderFound = undefined
 		for shd=1 to matExtras.ShaderList.count while shaderFound == undefined do
 		(
-			if matExtras.ShaderList[shd][0] == shaderSet[0] and matExtras.ShaderList[shd][1] == shaderSet[1] then
+			if matExtras.ShaderList[shd][1] == shaderSet[1] and matExtras.ShaderList[shd][2] == shaderSet[2] then
 			(
 				shaderFound = shd
 			)
@@ -481,7 +500,7 @@ fn GetMatExtras aqpMats difWhite =
 				)
 				if mat.bumpMap != undefined then
 				(
-					bump = (getFilenameFile mat.specularBumpMap.filename) + ".dds"
+					bump = (getFilenameFile mat.bumpMap.filename) + ".dds"
 					append textureSet bump
 					append textureIdSet texCount
 					texCount += 1
@@ -649,6 +668,8 @@ fn meshSplitter obj objInvArray =
 		append splitMeshes newObjs[1]
 	)
 	
+	--gc light:false delayed:false
+	
 	splitMeshes
 )
 
@@ -677,8 +698,12 @@ fn boneCountSplitter obj boneLimit =
 	objEdgeVertsList = #()
 	objFaceArrayList = #()
 	filled = false
-	meshop.setNumVDataChannels obj.mesh ((meshop.getNumVDataChannels obj.mesh) + 1) keep:true
-	meshop.setVDataChannelSupport obj.mesh 26 false
+
+	--Edge vert channel setup. Use channel 26 as a somewhat random channel that's well beyond what normal users will probably use
+	if (meshop.getNumMaps obj) < 27 then (meshop.setNumMaps obj 27 keep:true) 
+	meshop.setMapSupport obj 26 true
+	meshop.setNumMapVerts obj 26 obj.verts.count
+	meshop.setNumMapFaces obj 26 (meshop.getNumFaces obj) 
 	
 	while filled == false do
 	(
@@ -739,7 +764,7 @@ fn boneCountSplitter obj boneLimit =
 				objFaceArray[f] = false
 			) else 
 			(
-				for vert in faceVertsCheck do (appendIfUnique objEdgeVertsList vert)
+				for vert in faceVertsCheck do (meshop.setMapVert obj 26 vert [5,0,0])
 			)
 		)
 		append objFaceArrayList objFaceArray
@@ -754,12 +779,6 @@ fn boneCountSplitter obj boneLimit =
 				filled = false
 			)
 		)
-	)
-	
-	--Mark edge verts
-	for vert in objEdgeVertsList do
-	(
-		meshop.setVDataValue obj.mesh 26 vert 5.0
 	)
 	
 	objOut = meshSplitter obj objFaceArrayList
@@ -802,17 +821,16 @@ fn splitMeshByBoneCount meshes boneLimit =
 	splitMeshes
 )
 
-fn pso2VertOptimizer meshes UNRMExport YZRot =
+fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 (
 	meshData = #()
 	for obj in meshes do
 	(
 		local pso2VertArr = #()
-		fCount = (getNumFaces obj.mesh)
-		objFaces = #()
-		objEdgeVerts = #()
-		objBonePalette = #()
-		meshop.removeDegenerateFaces obj.mesh
+		local fCount = (getNumFaces obj.mesh) 
+		local objFaces = #()
+		local objEdgeVerts = #()
+		local objBonePalette = #()
 		
 		max modify mode
 		objSkin = obj.skin
@@ -822,7 +840,8 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 		for f = 1 to fCount do
 		(
 			--Get verts of the face
-			faceVerts = (getFace obj.mesh f)
+			local faceVerts = (getFace obj.mesh f)
+			--faceRNrms = (meshop.getFaceRNormals obj.mesh f)
 			append objFaces faceVerts
 			
 			--Get map information for each vertex
@@ -832,6 +851,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 				local tempVert = pso2Vert()
 				
 				--Initialize tempVert arrays
+				--tempVert.VertRendNormalArray = #()
 				tempVert.VertBinormalArray = #()
 				tempVert.VertTangentArray = #()
 				tempVert.VertColorArray = #()
@@ -844,16 +864,57 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 				--Set the vert if it's not there
 				if pso2VertArr[faceVerts[v]] == undefined then
 				(
-					tempVert.VertPos = getVert obj.mesh faceVerts[v]
+					tempPos = getVert obj.mesh faceVerts[v]
 					tempVert.VertNormal = getNormal obj.Mesh faceVerts[v]
+					--append tempVert.VertRendNormalArray faceRNrms[v]
 					
-					wc = skinOps.GetVertexWeightCount objSkin v
+					--Scale
+					tempPos.x *= obj.transform.scale.x
+					tempPos.y *= obj.transform.scale.y
+					tempPos.z *= obj.transform.scale.z
+					
+					
+					--Rot (rotate based on origin)
+					tempRot = (quattoeuler obj.transform.rotation)
+					if tempRot.X != 0 or tempRot.Y != 0 or tempRot.Z != 0 then
+					(
+						--Make point relative to origin for translation if not already there
+						tempPos -= obj.transform.pos
+						tempMatrix = (matrix3 [1,0,0] [0,1,0] [0,0,1] tempPos)
+						rotate tempMatrix tempRot
+						tempPos = tempMatrix.translationpart
+						
+						--Move point back relative to the object
+						tempPos += obj.transform.pos
+					)
+					
+					if YZRot == true then
+					(
+						tempZ = tempPos.z
+						tempPos.z = -tempPos.y
+						tempPos.y = tempZ
+						
+						tempNrm = tempVert.VertNormal.z
+						tempVert.VertNormal.z = tempVert.VertNormal.y
+						tempVert.VertNormal.y = -tempNrm
+					)
+					
+					if ResizeChecked == true then
+					(	
+						--Actual resizing
+						tempPos *= ( 1 / ResizeValue )
+					)
+					tempVert.VertPos = tempPos
+					
+					wc = skinOps.GetVertexWeightCount objSkin faceVerts[v]
 					weights = #()
 					_bones = #()
+					
 					for b = 1 to wc do
 					(
-						append weights (skinOps.GetVertexWeight objSkin v b)
-						boneId = (skinOps.GetVertexWeightBoneID objSkin v b)-1
+						append weights (skinOps.GetVertexWeight objSkin faceVerts[v] b)
+						boneId = (skinOps.GetVertexWeightBoneID objSkin faceVerts[v] b)
+						boneId = (GetUserProp (getnodebyname (skinOps.GetBoneName objSkin boneId 1)) "NodeID")
 						append _bones boneId
 						appendIfUnique objBonePalette boneId
 					)
@@ -866,9 +927,10 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 					tempVert.VertBones = _bones
 					tempVert.VertWeights = weights
 					
-					if (meshop.getVDataChannelSupport obj.mesh 26) == true then (if (meshop.getVDataValue obj.mesh 26 faceVerts[v]) == 5.0 then ( append objEdgeVerts faceVerts[v] ))
 					append tempVert.VertFaceArray #(f)
 					pso2VertArr[faceVerts[v]] = tempVert
+					--free weights
+					--free _bones
 				)
 				
 				--Get vert colors
@@ -880,7 +942,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 						vcolor.alpha = (meshop.getMapVert $.mesh -2 (meshop.getMapFace $.mesh -2 1)[1]).x
 					) else 
 					(
-						vcolor.alpha = 0xFF;
+						vcolor.alpha = 255;
 					)
 					append tempVert.VertColorArray vcolor
 				) else
@@ -892,12 +954,13 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 				if (meshop.getMapSupport obj.mesh 4) == true then
 				(
 					vcolor = (meshop.getMapVert obj.mesh 4 ((meshop.getMapFace obj.mesh 4 f)[v])) as color
+					
 					if (meshop.getMapSupport obj.mesh 5) == true then
 					(
 						vcolor.alpha = (meshop.getMapVert $.mesh 5 (meshop.getMapFace $.mesh 5 1)[1]).x
 					) else
 					(
-						vcolor.alpha = 0xFF;
+						vcolor.alpha = 255
 					)
 					append tempVert.VertColor2Array vcolor
 				) else
@@ -908,8 +971,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 				--Get first set of UVs 
 				if (meshop.getMapSupport obj.mesh 1) == true then
 				(
-					uv1 = (meshop.getMapVert obj.mesh 1 ((meshop.getMapFace obj.mesh 1 f)[v]))
-					append tempVert.VertUV1Array uv1
+					append tempVert.VertUV1Array (meshop.getMapVert obj.mesh 1 ((meshop.getMapFace obj.mesh 1 f)[v]))
 				) else
 				(
 					append tempVert.VertUV1Array undefined
@@ -931,6 +993,14 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 				) else
 				(
 					append tempVert.VertUV3Array undefined
+				)
+				
+				--Check for edge verts in channel 26
+				if (meshop.getMapSupport obj.mesh 26) == true then
+				(
+					--Check if this is an edge vert we set during the splitting process
+					EdgeVert = (meshop.getMapVert obj.mesh 26 ((meshop.getMapFace obj.mesh 26 f)[v])).x
+					if EdgeVert > 0.1 then (appendIfUnique objEdgeVerts faceVerts[v])
 				)
 				
 				--Compare with previous vertex data if it existed. If all map data is the equivalent to an entry, append the face, else append all
@@ -961,10 +1031,15 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 						append pso2VertArr[faceVerts[v]].VertUV2Array tempVert.VertUV2Array 
 						append pso2VertArr[faceVerts[v]].VertUV3Array tempVert.VertUV3Array
 						append pso2VertArr[faceVerts[v]].VertFaceArray #(f)
+						--append pso2VertArr[faceVerts[v]].VertRendNormalArray faceRNrms[v]
 					)
 
 				)
+				
+				--free tempVert
+				--gc light:false delayed:false
 			)
+
 		)
 		
 		--Retrieve and adjust face data, creating new vertices when necessary. When creating vertices, note down all new ids with the old ids in an array for unrms
@@ -993,16 +1068,18 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 						tempVert.VertWeights = pso2VertArr[v].VertWeights
 						tempVert.VertBones = pso2VertArr[v].VertBones
 						tempVert.VertNormal = pso2VertArr[v].VertNormal
+						--tempVert.VertRendNormalArray = pso2VertArr[v].VertRendNormalArray
 						append tempVert.VertColorArray  	pso2VertArr[v].VertColorArray[vertData]
 						append tempVert.VertColor2Array  	pso2VertArr[v].VertColor2Array[vertData]
 						append tempVert.VertUV1Array  		pso2VertArr[v].VertUV1Array[vertData]
 						append tempVert.VertUV2Array  		pso2VertArr[v].VertUV2Array[vertData]
 						append tempVert.VertUV3Array  		pso2VertArr[v].VertUV3Array[vertData]
-						append tempVert.VertFaceArray f
+						append tempVert.VertFaceArray 		f
 						
 						pso2VertArr[pso2VertArr.count+1] = tempVert
 						--append pso2VertArr[v].VertUNRMs pso2VertArr.count
 						objFaces[f][v] = pso2VertArr.count
+						--free tempVert
 					)
 				)
 			)
@@ -1015,18 +1092,22 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 		vertTypeSize = 0 
 		append validVertTypes 0x0 --Position
 		vertTypeSize += 0xC
-		if objBonePalette.count > 1 then
+		if objBonePalette.count >= 1 then
 		(
 			append validVertTypes 0x1 --Bone Weights
 			vertTypeSize += 0x10
 		)
 		append validVertTypes 0x2 --Normal
 		vertTypeSize += 0xC
-		if UNRMExport == true then
+		if pso2VertArr[1].VertUV1Array[1] != undefined then
 		(
+		--if UNRMExport == true then
+		--(
 			append validVertTypes 0x21 --Binormals
+			vertTypeSize += 0xC
 			append validVertTypes 0x20 --Tangents
-			vertTypeSize += 0x18
+			vertTypeSize += 0xC
+		--)
 		)
 		if pso2VertArr[1].VertColorArray[1] != undefined then
 		(
@@ -1038,7 +1119,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 			append validVertTypes 0x4 --Vert Color 2?
 			vertTypeSize += 0x4
 		)
-		if objBonePalette.count > 1 then
+		if objBonePalette.count >= 1 then
 		(
 			append validVertTypes 0xb --Bone Indices
 			vertTypeSize += 0x4
@@ -1060,7 +1141,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 		)
 		
 		tempMat = obj.material
-		matId = obj.material[GetFaceMatId obj.mesh 1]
+		matId = GetFaceMatId obj.mesh 1
 		--get true material if needed - A face's mat id in max will be used for its multimaterial and each successive level of multimaterial
 		while ((classof tempMat) == Multimaterial) do
 		(
@@ -1070,6 +1151,35 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 			) else
 			(
 				tempMat = tempMat[tempMat.count]
+			)
+		)
+
+		--PSO2 weight ids are relative to the bone palette, so we fix them here. Process Render normals as well while we're at this
+		for vert = 1 to pso2VertArr.count do
+		(
+			/*
+			if pso2VertArr[vert].VertRendNormalArray.count > 0 then
+			(
+				
+				nrmSum = [0,0,0]
+				for nrm in pso2VertArr[vert].VertRendNormalArray do
+				(
+					nrmSum += nrm
+				)
+				if YZRot == true then
+				(
+					temp = nrmSum.y
+					nrmSum.y = nrmSum.z
+					nrmSum.z = -temp
+				)
+				pso2VertArr[vert].VertNormal = normalize nrmSum 
+			)*/
+			for bon = 1 to pso2VertArr[vert].VertBones.count do
+			(
+				if pso2VertArr[vert].VertBones[bon] != 0 then
+				(
+					pso2VertArr[vert].VertBones[bon] = (finditem objBonePalette pso2VertArr[vert].VertBones[bon]) - 1
+				)
 			)
 		)
 		
@@ -1084,6 +1194,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot =
 		tempMesh.MeshVertSize    = vertTypeSize
 		tempMesh.MeshId 		 = (getUserProp obj "meshId")
 		append meshData tempMesh
+		--free tempMesh
 	)
 	
 	--return array with face, material, and vertex data for final write, delete export processed meshes
@@ -1119,14 +1230,10 @@ fn calcUNRMs meshData =
 			(
 				for w=1 to meshData[n].MeshVerts.count do
 				(
-					if (meshCheckArr[n][w] == true or (m == n and v == w)) then
-					(
-						continue
-					)
-					if (meshData[m].MeshVerts[v].VertPos == meshData[m].MeshVerts[v].VertPos and meshData[m].MeshVerts[v].VertNormal == meshData[m].MeshVerts[v].VertNormal and meshData[m].MeshVerts[v].VertUV1Array[1] == meshData[m].MeshVerts[v].VertUV1Array[1]) then
+					if (meshData[m].MeshVerts[v].VertPos == meshData[n].MeshVerts[w].VertPos and meshData[m].MeshVerts[v].VertNormal == meshData[n].MeshVerts[w].VertNormal and meshData[m].MeshVerts[v].VertUV1Array[1] == meshData[n].MeshVerts[w].VertUV1Array[1] and meshCheckArr[n][w] == false and (m != n and v != w)) then
 					(
 						meshCheckArr[n][w] = true
-						append unrm (uNRMStruct MeshNum:n VertId:w)
+						append unrm (uNRMStruct MeshNum:(n-1) VertId:w)
 					)
 				)
 			)
@@ -1144,95 +1251,104 @@ fn calcUNRMs meshData =
 
 fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 (	
-	
-	fName = (filenameFromPath aqpFile)
-	realFType = (substring (getFilenameType aqpFile) 2 3)
-	fName[fName.count] = "o" 
-	fType = (substring (getFilenameType fName) 2 3)
-	
-	startPath = getFilenamePath(getThisScriptFilename())
-	dotnet.loadAssembly (startPath + "\\NvTriStripDotNet.dll")
-	
-	--Gather meshes and create dummies for them for export
-	baseMeshes = for g in geometry where g.parent == undefined and g.children.count == 0 collect g
-	boneList = GetPSO2BoneArray false
-	extraBoneList = #()
-	for i=1 to baseMeshes.count do 
+	undo off
 	(
-		setUserProp baseMeshes[i] "meshId" (i-1)
-		temp = (getNodeByName (baseMeshes[i].name + "_dummy"))
-		if  temp == undefined then
+		fName = (filenameFromPath aqpFile)
+		realFType = (substring (getFilenameType aqpFile) 2 3)
+		fName[fName.count] = "o" 
+		fType = (substring (getFilenameType fName) 2 3)
+		
+		startPath = getFilenamePath(getThisScriptFilename())
+		dotnet.loadAssembly (startPath + "\\NvTriStripDotNet.dll")
+		
+		--Gather meshes and create dummies for them for export
+		baseMeshes = for g in geometry where g.parent == undefined and g.children.count == 0 collect g
+		boneList = GetPSO2BoneArray false
+		extraBoneList = #()
+		for i=1 to baseMeshes.count do 
 		(
-			temp = dummy pos: ( [0, 0, 0] ) name: ( baseMeshes[i].name + "_dummy")
-		)
-		temp.parent = boneList.BoneList[1]
-		append extraBoneList temp
-		if boneList.BoneOrdering == undefined then 
-		(
-			temp.name = "(" + ((boneList.BoneList.count + i-2) as string) + ")" + temp.name
-		)
-		setUserProp temp "NodeID" (boneList.BoneList.count + i-2)
-	)
-	
-	--Export Bones
-	currentPath = getFilenamePath aqpFile
-	boneFileName = filterString (filenameFromPath aqpFile) "."
-	boneFileName = (currentPath + boneFileName[1] + ".aqn")
-	SkelExport boneFileName ResizeChecked ResizeValue YZRot
-	
-	--Split meshes by material - note: ReplaceVertexWeights automatically reevaluates weight(s) that do not total 1 by increasing the ratios of each existing weight proportionally to sum to 1. 
-	aqpMeshes = splitMeshByMaterial baseMeshes
-	
-	--Possible 16 bone limit per mesh? If so, split per that as well. Generate dummy nodes for each final mesh with one name and a number. Dummy nodes should be placed before physics nodes (though this may not be required)
-	aqpMeshes = splitMeshByBoneCount aqpMeshes 16
-	
-	--Get rid of bad faces, just in case
-	for aqpMesh in aqpMeshes do
-	(
-		meshop.removeDegenerateFaces aqpMesh
-	)
-	
-	--Check for used vertex types: (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
-		--Duplicate and separate vertices based on if multiple UV channels/VC channels exist for it. 
-	aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport YZRot
-	
-	unrmData = undefined
-	if UNRMExport == true then
-	(
-		unrmData = (calcUNRMs aqpMeshData)
-	)
-	
-	--Get all unique mats and assign the array index of each to the respective objects
-	aqpMats = GetUniqueMats aqpMeshData
-	
-	--Get all unique shaders from material, textures, texture sets, and alpha setting
-	aqpMatExtra = GetMatExtras aqpMats difWhite
-
-	--Calculate geometry bounds OBJC. As duplicated vertices and changed faces won't change this, we feed it the export prepped mesh array
-	aqpBounds = originMinMax aqpMeshes ResizeChecked ResizeValue YZRot
-	
-	--Get rid of objects generated for export
-	for o in aqpMeshes do (delete o)
-	
-	--Generate tristrips from tris
-	aqpStrips = #()
-	totalFaces = 0
-	totalVertices = 0
-	for m in aqpMeshData do
-	(
-		faceSet = #()
-		for i = 1 to (m.MeshFaces.count) do
-		(
-			append faceSet (m.MeshFaces[i].x-1)
-			append faceSet (m.MeshFaces[i].y-1)
-			append faceSet (m.MeshFaces[i].z-1)
+			setUserProp baseMeshes[i] "meshId" (i-1)
+			temp = (getNodeByName (baseMeshes[i].name + "_dummy"))
+			if  temp == undefined then
+			(
+				temp = dummy pos: ( [0, 0, 0] ) name: ( baseMeshes[i].name + "_dummy")
+			)
+			temp.parent = boneList.BoneList[1]
+			append extraBoneList temp
+			if boneList.BoneOrdering == undefined then 
+			(
+				temp.name = "(" + ((boneList.BoneList.count + i-1) as string) + ")" + temp.name
+			)
+			setUserProp temp "NodeID" (boneList.BoneList.count + i-1)
 		)
 		
-		strippifier = dotNetObject "NvTriStripDotNet.NvStripifier"
-		strips = strippifier.GenerateStripsReturner faceSet true
-		append aqpStrips strips[1].indices
-		totalFaces += strips[1].indices.count
-		totalVertices += m.MeshVerts.count
+		--Export Bones
+		currentPath = getFilenamePath aqpFile
+		boneFileName = filterString (filenameFromPath aqpFile) "."
+		boneFileName = (currentPath + boneFileName[1] + ".aqn")
+		SkelExport boneFileName ResizeChecked ResizeValue YZRot
+		
+		--Split meshes by material - note: ReplaceVertexWeights automatically reevaluates weight(s) that do not total 1 by increasing the ratios of each existing weight proportionally to sum to 1. 
+		aqpMeshes = splitMeshByMaterial baseMeshes
+		print "MatSplit Done!"
+		gc light:false delayed:false
+		
+		--Possible 16 bone limit per mesh? If so, split per that as well. Generate dummy nodes for each final mesh with one name and a number. Dummy nodes should be placed before physics nodes (though this may not be required)
+		aqpMeshes = splitMeshByBoneCount aqpMeshes 16
+		print "BoneSplit Done!"
+		gc light:false delayed:false
+		
+		--Get rid of bad faces, just in case
+		for aqpMesh in aqpMeshes do
+		(
+			meshop.removeDegenerateFaces aqpMesh
+		)
+		print "Degen Faces Eradicated!"
+		
+		--Check for used vertex types: (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
+			--Duplicate and separate vertices based on if multiple UV channels/VC channels exist for it. 
+		aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport YZRot ResizeChecked ResizeValue
+		print "Verts Optimized!"
+		
+		unrmData = undefined
+		if UNRMExport == true then
+		(
+			unrmData = (calcUNRMs aqpMeshData)
+		)
+		
+		--Get all unique mats and assign the array index of each to the respective objects
+		aqpMats = GetUniqueMats aqpMeshData
+		print "Mats collected!"
+		--Get all unique shaders from material, textures, texture sets, and alpha setting
+		aqpMatExtra = GetMatExtras aqpMats difWhite
+		print "Extras Collected!"
+		--Calculate geometry bounds OBJC. As duplicated vertices and changed faces won't change this, we feed it the export prepped mesh array
+		aqpBounds = originMinMax aqpMeshes ResizeChecked ResizeValue YZRot
+		print "Bounds Generated!"
+		--Get rid of objects generated for export
+		for o in aqpMeshes do (delete o)
+		
+		--Generate tristrips from tris
+		aqpStrips = #()
+		totalFaces = 0
+		totalVertices = 0
+		for m in aqpMeshData do
+		(
+			faceSet = #()
+			for i = 1 to (m.MeshFaces.count) do
+			(
+				append faceSet (m.MeshFaces[i].x-1)
+				append faceSet (m.MeshFaces[i].y-1)
+				append faceSet (m.MeshFaces[i].z-1)
+			)
+			
+			strippifier = dotNetObject "NvTriStripDotNet.NvStripifier"
+			strips = strippifier.GenerateStripsReturner faceSet true
+			append aqpStrips strips[1].indices
+			totalFaces += strips[1].indices.count
+			totalVertices += m.MeshVerts.count
+		)
+		print "Strips Created!"
 	)
 	
 	pso2Model = fopen aqpFile "wb"
@@ -1251,8 +1367,6 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		WriteLong pso2Model 0              -- Reserve
 		WriteLong pso2Model 1              -- Always 1
 		WriteFixedLengthString pso2Model fName 0x20        -- Model filename
-		fseek pso2Model (-2) #seek_cur
-		WriteByte pso2Model 0x6F           -- Change aqp/trp to aqo/tro text. Game reads files the same regardless of aqo vs tro in observed cases, but good to be safe.
 		afpDataSizeOff = (ftell pso2Model) 
 		WriteLong pso2Model 0			   -- Filesize after write minus 0x50
 		WriteLong pso2Model 0x30           -- afp added offset?
@@ -1291,7 +1405,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 	WriteLong pso2Model 0xC2A			--0xC2A
 	WriteLong pso2Model 0xA4			--OBJC Size, always 0xA4
 	WriteLong pso2Model 0x17			--Unknown value, related to second value of MESH?	
-	maxVTXLOff = (ftell pso2Model); append relAddresses maxVTXLOff	--Size of largest VTXL Vertex struct
+	maxVTXLOff = (ftell pso2Model)	--Size of largest VTXL Vertex struct
 	WriteLong pso2Model 0				
 	WriteLong pso2Model totalFaces		--Total Strip Face Indices count
 	WriteLong pso2Model 0				--Reserve 0
@@ -1299,7 +1413,8 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 	WriteLong pso2Model 0				--Reserve 0
 	WriteLong pso2Model aqpMeshData.count --Unknown Count (The following counts share a value)
 	WriteLong pso2Model aqpMeshData.count --VSET Count 
-	WriteLong pso2Model 0xC0			  --VSET Offset - We can write this one immediately since it's the first struct set and so it's at a set place in all models
+	vSetOBJCOff = (ftell pso2Model); append relAddresses vSetOBJCOff
+	WriteLong pso2Model 0xC0 			  --VSET Offset - We can write this one immediately since it's the first struct set. Therefore, it's at a set place in all models
 	WriteLong pso2Model aqpMeshData.count --PSET Count
 	pSetOBJCOff = (ftell pso2Model); append relAddresses pSetOBJCOff 	--PSET Offset
 	WriteLong pso2Model 0
@@ -1338,7 +1453,10 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 	WriteFloat pso2Model aqpBounds.DiffY
 	WriteFloat pso2Model aqpBounds.DiffZ
 	WriteFloat pso2Model 0
-	uNRMOff = (ftell pso2Model); append relAddresses uNRMOff 	--UNRM Offset (If available, usually only for player models?)
+	if UNRMExport == true then
+	(
+		uNRMOff = (ftell pso2Model); append relAddresses uNRMOff 	--UNRM Offset (If available, usually only for player models?)
+	)
 	WriteLong pso2Model 0
 	--Padding
 	WriteLongLong pso2Model 0
@@ -1392,9 +1510,14 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 	)
 	
 	--VTXE Structs are written before their respective VTXL structs 
+	offsSet = 1
 	biggestVTXL = 0
 	for obj in aqpMeshData do
 	(
+		temp = (ftell pso2Model)
+		fseek pso2Model VSetOffsets[offsSet].VTXEOff #seek_set          -- Go back and fill in 
+		WriteLong pso2Model (temp - fileOffset)
+		fseek pso2Model temp #seek_set                 --Return to current address
 		vertRelAdd = 0 --Vertex relative address. We need to note down where each data struct for the vertex is relative to the start of the vertex
 		--VTXE Struct - These define the types of data each vertex has 
 		for type in obj.MeshValidVTypes do
@@ -1412,8 +1535,8 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 				0x10: (WriteLong pso2Model 2; curLength = 0x8) --(0x10 UV1 Buffer)
 				0x11: (WriteLong pso2Model 2; curLength = 0x8) --(0x11 UV2 Buffer)
 				0x12: (WriteLong pso2Model 2; curLength = 0x8) --(0x12 UV3 Buffer)
-				0x20: (WriteLong pso2Model 3; curLength = 0x8) --(0x20 Tangents)
-				0x21: (WriteLong pso2Model 3; curLength = 0x8) --(0x21 Binormals)
+				0x20: (WriteLong pso2Model 3; curLength = 0xC) --(0x20 Tangents)
+				0x21: (WriteLong pso2Model 3; curLength = 0xC) --(0x21 Binormals)
 				default: print "Bad vert type!"
 			)
 			WriteLong pso2Model vertRelAdd --Position in Vertex Data (Vert  data has each VTXE type laid out in sequence for a given vertex before moving to the next. This is the relative to the beginning of a particular vertex's data.) 
@@ -1422,6 +1545,10 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 			if vertRelAdd > biggestVTXL then (biggestVTXL = vertRelAdd)
 		)
 		--VTXL Struct - These are the vertex data structs defined in the VTXE before this
+		temp = (ftell pso2Model)
+		fseek pso2Model VSetOffsets[offsSet].VTXLOff #seek_set          -- Go back and fill in 
+		WriteLong pso2Model (temp - fileOffset)
+		fseek pso2Model temp #seek_set                 --Return to current address
 		for vert in obj.MeshVerts do
 		(
 			for type in obj.MeshValidVTypes do
@@ -1431,12 +1558,12 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 					0x0: (WriteFloat pso2Model vert.VertPos.x; WriteFloat pso2Model vert.VertPos.y; WriteFloat pso2Model vert.VertPos.z)  --(0x0 Vertex Position) 
 					0x1: (WriteFloat pso2Model vert.VertWeights[1]; WriteFloat pso2Model vert.VertWeights[2]; WriteFloat pso2Model vert.VertWeights[3]; WriteFloat pso2Model vert.VertWeights[4]) --(0x1 Vertex Weights)
 					0x2: (WriteFloat pso2Model vert.VertNormal.x; WriteFloat pso2Model vert.VertNormal.y; WriteFloat pso2Model vert.VertNormal.z)  --(0x2 Vertex Normal)
-					0x3: (WriteByte pso2Model vert.VertColorArray[1].b; WriteByte pso2Model vert.VertColorArray[1].g; WriteByte pso2Model vert.VertColorArray[1].r; WriteByte pso2Model vert.VertColorArray[1].a)  --(0x3 Vertex Color)
-					0x4: (WriteByte pso2Model vert.VertColor2Array[1].b; WriteByte pso2Model vert.VertColor2Array[1].g; WriteByte pso2Model vert.VertColor2Array[1].r; WriteByte pso2Model vert.VertColor2Array[1].a)  --(0x4 Vertex Color 2?)
+					0x3: (WriteByte pso2Model vert.VertColorArray[1].b; WriteByte pso2Model vert.VertColorArray[1].g; WriteByte pso2Model vert.VertColorArray[1].r; WriteByte pso2Model (vert.VertColorArray[1].a * 255))  --(0x3 Vertex Color)
+					0x4: (WriteByte pso2Model vert.VertColor2Array[1].b; WriteByte pso2Model vert.VertColor2Array[1].g; WriteByte pso2Model vert.VertColor2Array[1].r; WriteByte pso2Model (vert.VertColor2Array[1].a * 255))  --(0x4 Vertex Color 2?)
 					0xb: (WriteByte pso2Model vert.VertBones[1]; WriteByte pso2Model vert.VertBones[2]; WriteByte pso2Model vert.VertBones[3]; WriteByte pso2Model vert.VertBones[4])  --(0xb Weight Index)
-					0x10: (WriteFloat pso2Model vert.VertUV1Array[1].x; WriteFloat pso2Model vert.VertUV1Array[1].y) --(0x10 UV1 Buffer)
-					0x11: (WriteFloat pso2Model vert.VertUV2Array[1].x; WriteFloat pso2Model vert.VertUV2Array[1].y) --(0x11 UV2 Buffer)
-					0x12: (WriteFloat pso2Model vert.VertUV3Array[1].x; WriteFloat pso2Model vert.VertUV3Array[1].y) --(0x12 UV3 Buffer)
+					0x10: (WriteFloat pso2Model vert.VertUV1Array[1].x; WriteFloat pso2Model (-vert.VertUV1Array[1].y)) --(0x10 UV1 Buffer)
+					0x11: (WriteFloat pso2Model vert.VertUV2Array[1].x; WriteFloat pso2Model (-vert.VertUV2Array[1].y)) --(0x11 UV2 Buffer)
+					0x12: (WriteFloat pso2Model vert.VertUV3Array[1].x; WriteFloat pso2Model (-vert.VertUV3Array[1].y)) --(0x12 UV3 Buffer)
 					0x20: (WriteFloat pso2Model vert.VertTangentArray[1].x; WriteFloat pso2Model vert.VertTangentArray[1].y; WriteFloat pso2Model vert.VertTangentArray[1].z) --(0x20 Tangents)
 					0x21: (WriteFloat pso2Model vert.VertBinormalArray[1].x; WriteFloat pso2Model vert.VertBinormalArray[1].y; WriteFloat pso2Model vert.VertBinormalArray[1].z) --(0x21 Binormals)
 					default: print "Bad vert type!"
@@ -1448,6 +1575,42 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		(
 			WriteByte pso2Model 0 --Write padding
 		)
+		
+		if obj.MeshBonePalette.count > 0 then
+		(
+			temp = (ftell pso2Model)
+			fseek pso2Model VSetOffsets[offsSet].BPalOff #seek_set          -- Go back and fill in 
+			WriteLong pso2Model (temp - fileOffset)
+			fseek pso2Model temp #seek_set                 --Return to current address
+			--Write bones
+			for bon in obj.MeshBonePalette do
+			(
+				WriteShort pso2Model bon
+			)
+			--Pad for alignment
+			while ( (mod (ftell pso2Model) 0x10) != 0) do
+			(
+				WriteByte pso2Model 0 --Write padding
+			)
+		)
+		if obj.MeshEdgeVerts.count > 0 then
+		(
+			temp = (ftell pso2Model)
+			fseek pso2Model VSetOffsets[offsSet].EVertOff #seek_set          -- Go back and fill in 
+			WriteLong pso2Model (temp - fileOffset)
+			fseek pso2Model temp #seek_set                 --Return to current address
+			--Write edge verts
+			for vertEdge in obj.MeshEdgeVerts do
+			(
+				WriteShort pso2Model vertEdge
+			)
+			--Pad for alignment
+			while ( (mod (ftell pso2Model) 0x10) != 0) do
+			(
+				WriteByte pso2Model 0 --Write padding
+			)
+		)
+		offsSet += 1
 	)
 	--Set largest VTXL in OBJC
 	temp = (ftell pso2Model)
@@ -1520,15 +1683,15 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		WriteByte pso2Model 0x80		--Unk U8, usually 0x80
 		WriteByte pso2Model 0x64		--Unk U8, usually 0x63 or 0x64
 		WriteShort pso2Model 0			--Unk U16, always 0?
-		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Material Index for current mesh
-		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Render Index for current mesh
+		WriteLong pso2Model (aqpMeshData[obj].MeshMatId - 1) --Material Index for current mesh
+		WriteLong pso2Model (aqpMeshData[obj].MeshMatId - 1) --Render Index for current mesh
 		WriteLong pso2Model aqpMatExtra.MatShaderIndex[aqpMeshData[obj].MeshMatId]  --Shader Index for current mesh
-		WriteLong pso2Model (aqpMeshData[obj].MeshMatId-1) --Texture Set Index for current mesh
-		WriteLong pso2Model (getUserProp extraBoneList[aqpMeshData[obj].MeshId+1] "NodeID")  --Bone Index for autogenerated base mesh dummy; These are ordered before physics bones, but after normal bones. 
+		WriteLong pso2Model (aqpMeshData[obj].MeshMatId - 1) --Texture Set Index for current mesh
+		WriteLong pso2Model ((getUserProp extraBoneList[aqpMeshData[obj].MeshId+1] "NodeID") + 1)  --Bone Index for autogenerated base mesh dummy; These are ordered before physics bones, but after normal bones. 
 																				--Presumably just for debugging/organization normally, but also used for rigid weighting objects that didn't originally have bones
 																				--Assumedly, meshes outside hierarchy are weighted to root while those with a hierarchy are placed as such while placing the node's mesh in the mesh data.
-		WriteLong pso2Model obj --VSET?, Mesh Index
-		WriteLong pso2Model obj --PSET?, Mesh Index
+		WriteLong pso2Model (obj - 1) --VSET?, Mesh Index
+		WriteLong pso2Model (obj - 1) --PSET?, Mesh Index
 		WriteLong pso2Model aqpMeshData[obj].MeshId	--Autogenerated base mesh dummy id. 0 if there's only one, presumably, though if multiple exist, the dummies are numbered. Dummy order seems arbitrary (ie. first num may be 6, followed by 2 in hierarchy etc.)
 		WriteLong pso2Model 0 --Unk, often 0
 		WriteLong pso2Model 0 --0
@@ -1598,13 +1761,19 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		WriteLong pso2Model 5		-- 5 usually
 		WriteLong pso2Model 6		-- 6 usually
 		WriteLong pso2Model 1		-- 1 Another alpha setting? Maybe for multi/_s map?
+		WriteLong pso2Model 1       -- 1 usually
 		WriteLong pso2Model 5		-- 5 usually
 		WriteLong pso2Model 0		-- 0-256, opaque alpha setting? (assumedly value of alpha at which a pixel is rendered invisible vs fully visible)
 		WriteLong pso2Model 1		-- 1 usually
 		WriteLong pso2Model 4		-- 4 usually
 		WriteLong pso2Model 1		-- 1 usually
 	)
-
+	--Pad for alignment
+	while ( (mod (ftell pso2Model) 0x10) != 0) do
+	(
+		WriteByte pso2Model 0 --Write padding
+	)	
+	
 	temp = (ftell pso2Model)
 	fseek pso2Model shadOBJCOff #seek_set          -- Go back and fill in address
 	WriteLong pso2Model (temp - fileOffset)
@@ -1804,11 +1973,12 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 	nofBegin = (ftell pso2Model) 
 	WriteString pso2Model "NOF0"    
 	fseek pso2Model (-1) #seek_cur 
-	nofSizeOff = (ftell pso2Model) 				-- Get size offset
+	nofDataSizeOff = (ftell pso2Model) 				-- Get size offset
 	WriteLong pso2Model 0
 	WriteLong pso2Model relAddresses.count		-- Entry count
+	nofDataSizeStart = (ftell pso2Model)
 	WriteLong pso2Model 0						-- 0
-	nofSizeStart = (ftell pso2Model)
+	
 	--Write Addresses
 	for rel in relAddresses do
 	(
@@ -1819,15 +1989,13 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 	(
 		WriteByte pso2Model 0 --Write padding
 	)
-	nofSize = (ftell pso2Model) - nofSizeStart
+	nofSize = (ftell pso2Model) - nofBegin
+	nofDataSize = (ftell pso2Model) - nofDataSizeStart
 	
-	if UNRMExport == true then
-	(
-		temp = (ftell pso2Model)
-		fseek pso2Model UNRMvertIDOff #seek_set          -- Go back and fill in address
-		WriteLong pso2Model nofSize
-		fseek pso2Model temp #seek_set                 --Return to current address
-	)
+	temp = (ftell pso2Model)
+	fseek pso2Model nofDataSizeOff #seek_set          -- Go back and fill in address
+	WriteLong pso2Model nofDataSize
+	fseek pso2Model temp #seek_set                 --Return to current address
 	
 	--NEND
 	WriteString pso2Model "NEND"
@@ -1858,8 +2026,8 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 	WriteLong pso2Model (nofBegin - (relSizeAdd + 0x04) - 0x40)
 	
 	
-	fflush aqpFile
-	fclose aqpFile 
+	fflush pso2Model
+	fclose pso2Model
 	
 	--Cleanup
 	for o in extraBoneList do
