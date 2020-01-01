@@ -4,6 +4,7 @@
 */
 
 FileIn "FileUtils.ms"
+FileIn "Utils.ms"
 
 -- The FileStreamReader provides extensive reading functions for use with files and file streams
 struct FileStreamReader 

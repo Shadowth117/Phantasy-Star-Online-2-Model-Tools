@@ -362,35 +362,10 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 	
 	--Check how bone export order will be done
 	scenebones = #()
+	boneCounter = 0
 	for o in objects where isGroupHead o == false and isGroupMember o == false and (superclassof o == helper or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
 	(
-		boneCheck = findString (o.name) "("
-		if (boneCheck == 1 or GetUserProp o "NodeID" != undefined) then
-		(
-			byOrder = false
-		)
-		if (findstring o.name "(0)" != undefined) then -- Get the pso2 bone parent
-		(
-			scenebones[1] = o
-		)
-		if (o.parent == undefined and scenebones[1] == undefined) then --Try to assign the first root node looking node as the root if unmarked. Leave it to user to make the root bone in this case.
-		(
-			scenebones[1] = o
-		)
-	)
-	
-		--Rotate if desired (probably desired)
-	if (YZRot == true) then
-	(
-		rotDummy = dummy pos: ( [0, 0, 0] ) name: ( "rotationDummy")
-		sceneBones[1].Parent = rotDummy
-		Rotate rotDummy (eulerAngles -90 0 0)
-		delete rotDummy
-	)
-	
-	--Loop through bones and gather info
-	for o in objects where isGroupHead o == false and isGroupMember o == false and (superclassof o == helper or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
-	(
+		
 		--Write user properties to allow for animation export after if desired
 		if getUserProp o "BoneShort1" == undefined then
 		(
@@ -406,8 +381,39 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		)
 		if getUserProp o "NodeID" == undefined then
 		(
-			setUserProp o "NodeID" boneParams.Count
+			setUserProp o "NodeID" boneCounter
 		)
+		
+		boneCheck = findString (o.name) "("
+		/*
+		if (boneCheck == 1 or GetUserProp o "NodeID" != undefined) then
+		(
+			byOrder = false
+		)*/
+		if (findstring o.name "(0)" != undefined) then -- Get the pso2 bone parent
+		(
+			scenebones[1] = o
+		)
+		if (o.parent == undefined and scenebones[1] == undefined) then --Try to assign the first root node looking node as the root if unmarked. Leave it to user to make the root bone in this case.
+		(
+			scenebones[1] = o
+		)
+		
+		boneCounter += 1
+	)
+	
+		--Rotate if desired (probably desired)
+	if (YZRot == true) then
+	(
+		rotDummy = dummy pos: ( [0, 0, 0] ) name: ( "rotationDummy")
+		sceneBones[1].Parent = rotDummy
+		Rotate rotDummy (eulerAngles -90 0 0)
+		delete rotDummy
+	)
+	
+	--Loop through bones and gather info
+	for o in objects where isGroupHead o == false and isGroupMember o == false and (superclassof o == helper or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
+	(
 		
 		--print o
 		boneName = o.name
@@ -516,23 +522,36 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 			boneNextSibling = -1
 		)
 		
+		--print boneName
 		--Check how nodes should be added
 		if ((getUserProp o "EffectNode") == false or (getUserProp o "EffectNode") == undefined ) then
 		(
 			if (byOrder == true) then
 			(
-				append boneParams (boneStruct BoneParent:boneParent BoneName:boneName BoneTFM:boneMatrix BoneRelTFM:relBoneMatrix BoneFirstChild:boneFirstChild BoneNextSibling:boneNextSibling BoneShort1:boneShort1 BoneShort2:boneShort2)
+				if boneName != undefined then
+				(
+					--print "appending"
+					append boneParams (boneStruct BoneParent:boneParent BoneName:boneName BoneTFM:boneMatrix BoneRelTFM:relBoneMatrix BoneFirstChild:boneFirstChild BoneNextSibling:boneNextSibling BoneShort1:boneShort1 BoneShort2:boneShort2)
+				)
 			)
 			else
 			(
 				if ((findString (o.name) "(") == 1) then
 				(
 					id = (filterstring o.name "()")[1]
-					boneParams[((id as integer) + 1)] = (boneStruct BoneParent:boneParent BoneName:boneName BoneTFM:boneMatrix BoneRelTFM:relBoneMatrix BoneFirstChild:boneFirstChild BoneNextSibling:boneNextSibling BoneShort1:boneShort1 BoneShort2:boneShort2)
+					if id != undefined and boneName != undefined then
+					(
+						--print "() name"
+						boneParams[((id as integer) + 1)] = (boneStruct BoneParent:boneParent BoneName:boneName BoneTFM:boneMatrix BoneRelTFM:relBoneMatrix BoneFirstChild:boneFirstChild BoneNextSibling:boneNextSibling BoneShort1:boneShort1 BoneShort2:boneShort2)
+					)
 				) else 
 				(
 					id = getUserProp o "NodeID"
-					boneParams[((id as integer) + 1)] = (boneStruct BoneParent:boneParent BoneName:boneName BoneTFM:boneMatrix BoneRelTFM:relBoneMatrix BoneFirstChild:boneFirstChild BoneNextSibling:boneNextSibling BoneShort1:boneShort1 BoneShort2:boneShort2)
+					if id != undefined and boneName != undefined then
+					(
+						--print "NodeId"
+						boneParams[((id as integer) + 1)] = (boneStruct BoneParent:boneParent BoneName:boneName BoneTFM:boneMatrix BoneRelTFM:relBoneMatrix BoneFirstChild:boneFirstChild BoneNextSibling:boneNextSibling BoneShort1:boneShort1 BoneShort2:boneShort2)
+					)
 				)
 			)
 		) 
@@ -570,8 +589,9 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 	)
 	
 	-- Check for Parents, First Children, and Next Siblings that are strings instead of ids
-	for bp in boneParams do
+	for bpCount = 1 to boneParams.count do
 	(
+		bp = boneParams[bpCount]
 		bParentDone = false
 		bFChildDone = false
 		bNSiblingDone = false
@@ -579,60 +599,56 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		(
 			if ((findString (bp.BoneParent.name) "(") == 1) then
 			(
-				bp.BoneParent = ((filterstring bp.BoneParent.name "()")[1] as integer)
+				boneParams[bpCount].BoneParent = ((filterstring bp.BoneParent.name "()")[1] as integer)
 			)	else 
 			(
-				for q = 1 to boneParams.count do
+				for q = 1 to boneParams.count while bParentDone == false do
 				(
-					if (bParentDone == false) then
+					if (bp.BoneParent.name == boneParams[q].BoneName) then
 					(
-						if (bp.BoneParent.name == boneParams[q].BoneName) then
-						(
-							bp.BoneParent = (q - 1)
-							bParentDone = true
-						)
+						boneParams[bpCount].BoneParent = (q - 1)
+						bParentDone = true
 					)
 				)
 			)
 		)
 		if (classof bp.BoneFirstChild == string) then
 		(	
-			for q = 1 to boneParams.count do
+			for q = 1 to boneParams.count while bFChildDone == false do
 			(
-				if (bFChildDone == false) then
+				if (bp.BoneFirstChild == boneParams[q].BoneName) then
 				(
-					if (bp.BoneFirstChild == boneParams[q].BoneName) then
-					(
-						bp.BoneFirstChild = (q - 1)
-						bPFChildDone = true
-					)
+					boneParams[bpCount].BoneFirstChild = (q - 1)
+					bPFChildDone = true
 				)
 			)
 		)
 		if (classof bp.BoneNextSibling == string) then
 		(
-			for q = 1 to boneParams.count do
+			for q = 1 to boneParams.count while bNSiblingDone == false do
 			(
-				if (bNSiblingDone == false) then
+				if (bp.BoneNextSibling == boneParams[q].BoneName) then
 				(
-					if (bp.BoneNextSibling == boneParams[q].BoneName) then
-					(
-						bp.BoneNextSibling = (q - 1)
-						bNSiblingDone = true
-					)
+					boneParams[bpCount].BoneNextSibling = (q - 1)
+					bNSiblingDone = true
 				)
+			)
+			if (classof boneParams[bpCount].BoneNextSibling == string) then
+			(
+				boneParams[bpCount].BoneNextSibling = -1
 			)
 		)
 	)
 	
 	-- Check for Parents that are strings instead of ids (Children and siblings are unused for these) Remember effect nodes CANNOT be parented to effect nodes
-	for ep in effParams do
+	for epCount = 1 to effParams.count do
 	(
+		ep = effParams[epCount]
 		if (ep == undefined) then
 		(
 			sanityCheckCount += 1
 			sanityName = "badNode" + sanityCheckCount as string
-			bp = (boneStruct BoneParent:rootBackup BoneName:sanityName BoneTFM:(matrix3 1) BoneRelTFM:(matrix3 1) BoneFirstChild:(-1) BoneNextSibling:(-1) BoneShort1:undefined BoneShort2:undefined)
+			effParams[epCount] = (boneStruct BoneParent:rootBackup BoneName:sanityName BoneTFM:(matrix3 1) BoneRelTFM:(matrix3 1) BoneFirstChild:(-1) BoneNextSibling:(-1) BoneShort1:undefined BoneShort2:undefined)
 		)
 		eParentDone = false
 		
@@ -640,7 +656,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		(
 			if ((findString (ep.BoneParent.name) "(") == 1) then
 			(
-				ep.BoneParent = ((filterstring ep.BoneParent.name "()")[1] as integer)
+				effParams[epCount].BoneParent = ((filterstring ep.BoneParent.name "()")[1] as integer)
 			)	else 
 			(
 				for q = 1 to boneParams.count do
@@ -649,7 +665,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 					(
 						if (ep.BoneParent.name == boneParams[q].BoneName) then
 						(
-							ep.BoneParent = (q - 1)
+							effParams[epCount].BoneParent = (q - 1)
 							eParentDone = true
 						)
 					)
@@ -692,10 +708,11 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 	effNodeAdd = (ftell pso2Bones)
 	WriteLong pso2Bones 0 -- Effect node address
 	WriteLongLong pso2Bones 0 -- Always 0
-
+	
 	--Bone structs
 	for i = 1 to boneParams.count do
 	(
+		print boneParams[i]
 		if(boneParams[i].BoneShort1 != undefined) then -- Check if there's custom data to use
 		(
 			WriteShort pso2Bones (("0x" + boneParams[i].BoneShort1) as integer) -- Some kind of bitflag? For players at least, 1C0 will work for almost everything, although others are used
@@ -715,7 +732,6 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 			WriteLong pso2Bones -1 -- null if no parent
 		)
 		WriteLong pso2Bones -1-- Always this
-		
 		if(boneParams[i].BoneFirstChild != undefined) then
 		(
 			WriteLong pso2Bones boneParams[i].BoneFirstChild -- First child 
@@ -723,7 +739,6 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		(
 			WriteLong pso2Bones -1 -- Always this
 		)
-		
 		if(boneParams[i].BoneNextSibling != undefined) then
 		(
 			if(boneParams[i].BoneNextSibling != -1) then
@@ -905,7 +920,6 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 	)	
 	gc()
 ) 
-
 
 fn GetPSO2BoneArray includeEffNodes =
 (		

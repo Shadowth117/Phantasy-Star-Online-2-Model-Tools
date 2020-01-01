@@ -1202,7 +1202,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 )
 
 --Check vert positions, normals, and first UV coord sets in order to find UNRM candidates 
-fn calcUNRMs meshData =
+fn calcUNRMs meshData unrmAvg =
 (
 	unrms = #()
 	unrmVertCount = 0
@@ -1220,20 +1220,32 @@ fn calcUNRMs meshData =
 	)
 	
 	--Go through all verts and check for matches. Only append UNRMs if there's more than one in the unrm temp struct (ie at least one match)
+	
+	normals = undefined
 	for m = 1 to meshData.count do
 	(
 		for v = 1 to meshData[m].MeshVerts.count do
 		(
 			unrm = #()
 			append unrm (uNRMStruct MeshNum:m VertId:v)
-			for n=m to meshData.count do
+			if (unrmAvg == true) then
+			(
+				normals = meshData[m].MeshVerts[v].VertNormal
+			)
+			for n = 1 to meshData.count do
 			(
 				for w=1 to meshData[n].MeshVerts.count do
 				(
-					if (meshData[m].MeshVerts[v].VertPos == meshData[n].MeshVerts[w].VertPos and meshData[m].MeshVerts[v].VertNormal == meshData[n].MeshVerts[w].VertNormal and meshData[m].MeshVerts[v].VertUV1Array[1] == meshData[n].MeshVerts[w].VertUV1Array[1] and meshCheckArr[n][w] == false and (m != n and v != w)) then
+					sameVert = (m == n and v == w)
+					if (meshData[m].MeshVerts[v].VertPos == meshData[n].MeshVerts[w].VertPos and sameVert == false and meshCheckArr[n][w] == false) then
+					--if (meshData[m].MeshVerts[v].VertPos == meshData[n].MeshVerts[w].VertPos and meshData[m].MeshVerts[v].VertNormal == meshData[n].MeshVerts[w].VertNormal and meshData[m].MeshVerts[v].VertUV1Array[1] == meshData[n].MeshVerts[w].VertUV1Array[1] and meshCheckArr[n][w] == false and (m != n and v != w)) then
 					(
 						meshCheckArr[n][w] = true
-						append unrm (uNRMStruct MeshNum:(n-1) VertId:w)
+						append unrm (uNRMStruct MeshNum:(n) VertId:(w))
+						if (unrmAvg == true) then
+						(
+							normals += meshData[n].MeshVerts[w].VertNormal
+						)
 					)
 				)
 			)
@@ -1242,6 +1254,14 @@ fn calcUNRMs meshData =
 			(
 				unrmVertCount += unrm.count
 				append unrms unrm
+				if (unrmAvg == true) then
+				(
+					normals = normalize normals
+					for vert in unrm do
+					(
+						meshData[vert.MeshNum].MeshVerts[vert.VertId].VertNormal = normals
+					)
+				)							
 			)
 		)
 	)
@@ -1249,7 +1269,7 @@ fn calcUNRMs meshData =
 	UNRMContainer = (uNRMHolder UNRMs:unrms UNRMVertCount:unrmVertCount)
 )
 
-fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
+fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg =
 (	
 	undo off
 	(
@@ -1313,7 +1333,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		unrmData = undefined
 		if UNRMExport == true then
 		(
-			unrmData = (calcUNRMs aqpMeshData)
+			unrmData = (calcUNRMs aqpMeshData unrmAvg)
 		)
 		
 		--Get all unique mats and assign the array index of each to the respective objects
@@ -1476,7 +1496,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		offs.VTXLOff = (ftell pso2Model); append relAddresses offs.VTXLOff 	--Offset of VTXL Structs
 		WriteLong pso2Model 0
 		WriteLong pso2Model 0	--Unknown 0
-		if obj.MeshBonePalette.count > 1 then --Bone Palette 1 Bone Count    (May need to stay under 16?)
+		if obj.MeshBonePalette.count > 0 then --Bone Palette 1 Bone Count    (May need to stay under 16?)
 		( 
 			WriteLong pso2Model obj.MeshBonePalette.count 
 			append relAddresses (ftell pso2Model)
@@ -1489,20 +1509,15 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		WriteLong pso2Model 0	--Unknown 1
 		WriteLong pso2Model 0	--Unknown 2
 		WriteLong pso2Model 0	--Unknown 3
-		if UNRMExport == true then	--Autosplit edge vertex count - Basically, vertices in the splitting process on the edges that were split. Unused on non unrm models?
+		if obj.MeshEdgeVerts.count > 0 then
 		(
-			if obj.MeshEdgeVerts.count > 1 then
-			(
-				WriteLong pso2Model obj.MeshEdgeVerts.count
-				append relAddresses (ftell pso2Model)
-			) else
-			(
-				WriteLong pso2Model 0
-			)
+			print "edgeset 1"
+			WriteLong pso2Model obj.MeshEdgeVerts.count
+			append relAddresses (ftell pso2Model)
 		) else
 		(
-			WriteLong pso2Model 0	
-		)	  
+			WriteLong pso2Model 0
+		)  
 		offs.EVertOff = (ftell pso2Model) --Autosplit edge vertex offset
 		WriteLong pso2Model 0
 		
@@ -1595,6 +1610,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		)
 		if obj.MeshEdgeVerts.count > 0 then
 		(
+			print "edgeset 2"
 			temp = (ftell pso2Model)
 			fseek pso2Model VSetOffsets[offsSet].EVertOff #seek_set          -- Go back and fill in 
 			WriteLong pso2Model (temp - fileOffset)
@@ -1940,7 +1956,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		(
 			for p in o do
 			(
-				WriteLong pso2Model p.MeshNum
+				WriteLong pso2Model (p.MeshNum - 1)
 			)
 		)
 		--Pad for alignment
@@ -1958,7 +1974,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite =
 		(
 			for p in o do
 			(
-				WriteLong pso2Model p.VertID
+				WriteLong pso2Model (p.VertID - 1)
 			)
 		)
 		--Pad for alignment

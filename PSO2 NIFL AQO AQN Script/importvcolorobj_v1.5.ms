@@ -61,13 +61,15 @@ rollout objImport "Vcolor OBJ Import"
 		button exportAQPButton "Export..."
 		checkBox playerModel "Player Model" checked:true align:#center
 		checkBox difWhite "White Diffuse Tint" checked:true align:#center
+		checkBox unrmAvg "Average UNRM Normals" checked:true align:#center
 		Label exportNote "Note: Vertex weights past the"
 		Label exportNote2 "4th greatest are redistributed"
 	)
+	/*
 	group "Convert hierarchy to bones"
 	(
 		button convToBones "Convert..."
-	)
+	)*/
 	group "Import AQN Only"
 	(
 		button importAQNButton "Import..."
@@ -568,11 +570,23 @@ rollout objImport "Vcolor OBJ Import"
 							)
 							"vn": -- Set vertex normal
 							(
+								
 								local nx = ReadFloat lineTokenizer
+								
+								if (YZCheckBox.checked) then
+								(
+								    local nz = (ReadFloat lineTokenizer)
+								    local ny = -(ReadFloat lineTokenizer)
+								) else 
+								(
+								    local ny = ReadFloat lineTokenizer
+									local nz = ReadFloat lineTokenizer
+								)
+								/*
 								local ny = ReadFloat lineTokenizer
 								local nz = ReadFloat lineTokenizer
-								
-								append normals [ nx, ny, nx ]
+								*/
+								append normals [ nx, ny, nz ]
 							)
 							
 							"f": -- Define face (coord index/texcoord index/normal index)
@@ -928,6 +942,7 @@ rollout objImport "Vcolor OBJ Import"
 							meshop.setvertalpha newMesh -2 i colorArray[i].alpha
 						)  
 					)
+					
 					-- Set face material IDs
 					for i = 1 to (meshop.getNumFaces newMesh) do
 					(
@@ -952,8 +967,71 @@ rollout objImport "Vcolor OBJ Import"
 							setvert newMesh i v
 						)
 					)
+					meshop.removeDegenerateFaces newMesh
+					update newMesh
 					
-					/* Apply skin */
+					--Set Normals
+					max modify mode
+					select newMesh
+					addmodifier newMesh (Edit_Normals ()) ui:off
+					nMNorms = newMesh.modifiers[#Edit_Normals]	
+					
+					--Finish setting normals
+					newMesh.Edit_Normals.MakeExplicit selection:#{1..newMesh.verts.count}
+					EN_convertVS = newMesh.Edit_Normals.ConvertVertexSelection
+					EN_setNormal = newMesh.Edit_Normals.SetNormal
+					EN_getNormal = newMesh.Edit_Normals.GetNormal
+					EN_getVertexID = newMesh.Edit_Normals.GetVertexID
+					EN_getNormalID = newMesh.Edit_Normals.GetNormalID
+					EN_getDegree = newMesh.Edit_Normals.GetFaceDegree
+					EN_setSelection = newMesh.Edit_Normals.SetSelection
+					--EN_makeExplicit = newMesh.Edit_Normals.MakeExplicit
+					EN_setExplicit = newMesh.Edit_Normals.SetNormalExplicit
+					normID = #{}
+
+					
+					for v = 1 to newMesh.verts.count do(
+						free normID
+						EN_convertVS #{v} &normID
+						for id in normID do 
+						(
+							EN_setSelection #{id}
+							EN_setExplicit id explicit:true
+							print normals[vertOrigID[v]]
+							EN_setNormal id normals[vertOrigID[v]]
+						)
+					)
+					
+					/*
+					for f = 1 to newMesh.faces.count do
+					(
+						faceNorms = EN_getDegree f
+						for d = 1 to faceNorms do
+						(
+							vert = EN_getVertexID f d
+							norm = EN_getNormalID f d
+							
+							EN_setExplicit norm explicit:true
+							EN_setNormal norm normals[vertOrigID[vert]]
+						)
+					)*/
+					
+					/*
+					for i = 1 to nMNorms.GetNumNormals() do
+					(
+						-- make explicit
+						nMNorms.SetNormalExplicit i explicit:true
+						  
+						-- set normal vector
+						nMNorms.SetNormal i normals[vertOrigID[i]]
+						print (nMNorms.GetNormal i)
+					)*/
+						
+					update newMesh
+					maxOps.CollapseNodeTo newMesh 1 true -- Collapse the Edit Normals modifier
+					update newMesh
+					
+					-- Apply skin 
 					if (PSO2Bones.checked and boneWeights.count > 0 and pso2BoneArray != undefined) then				
 					(						
 						count =  0
@@ -962,7 +1040,7 @@ rollout objImport "Vcolor OBJ Import"
 						skinMod = Skin()
 						AddModifier newMesh skinMod
 						
-						/* Apply Skinned Nodes */
+						--Apply Skinned Nodes 
 						for i in bonePalGroups[k] do
 						(
 							tempB = ((i as integer) + 1)
@@ -971,15 +1049,14 @@ rollout objImport "Vcolor OBJ Import"
 						)
 						
 						--print ("Group:" + k as string)
-						/* Set the weight for each of them */
+						-- Set the weight for each of them 
 						ModPanel.SetCurrentObject skinMod
 						
 						--print newMesh.numverts
 						for i = 1 to newMesh.numverts do 
 						(
-
-								skinOps.unNormalizeVertex skinMod i true
-								skinOps.ReplaceVertexWeights skinMod i boneIds[vertOrigID[i]] boneWeights[vertOrigID[i]]
+							skinOps.unNormalizeVertex skinMod i true
+							skinOps.ReplaceVertexWeights skinMod i boneIds[vertOrigID[i]] boneWeights[vertOrigID[i]]
 						)
 							
 						Max create mode
@@ -1002,6 +1079,8 @@ rollout objImport "Vcolor OBJ Import"
 						)
 					)
 					
+					--maxOps.CollapseNodeTo newMesh 1 true -- Collapse the Edit Normals modifier
+					
 					--polyop.deleteIsoVerts newMesh
 					
 					--Update mesh
@@ -1009,7 +1088,6 @@ rollout objImport "Vcolor OBJ Import"
 					(
 						newMesh.showVertexColors = true 
 					)
-					meshop.removeDegenerateFaces newMesh
 					update newMesh
 					gc()
 					print (groupNames[k] as string +"mesh imported!")
@@ -1049,7 +1127,7 @@ rollout objImport "Vcolor OBJ Import"
 				messageBox "Filename with extension must be less than 32 characters long"
 			) else
 			(
-				GeoExport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked playerModel.checked difWhite.checked
+				GeoExport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked playerModel.checked difWhite.checked unrmAvg.checked
 			)
 		)
 
@@ -1114,4 +1192,4 @@ rollout objImport "Vcolor OBJ Import"
 		autoSizeSpinner.enabled = nowChecked
 	)
 )
-createDialog objImport 160 590
+createDialog objImport 160 620
