@@ -66,11 +66,18 @@ fn ClearAnimations =
 fn relativePosition obj keyTime =
 (
 	tfm = (at time keyTime obj.transform)
+	curScale = tfm.scalePart
+	
 	if obj.Parent != undefined then
 	(
-		--tfm *= (inverse (relativePosition obj.Parent keyTime)) 
 		tfm *= (inverse (at time keyTime obj.Parent.transform)) 
 	)
+						
+	print curScale 
+	--Remove scaling influence from this value (The scaling will be added in as a scaling keyframe if it should be there)
+	curScale = (scaleMatrix curScale)
+	--curScale = inverse (scaleMatrix curScale)
+	tfm *= curScale
 	
 	tfm
 )
@@ -587,6 +594,7 @@ fn exportPSO2Anim aqmFile =
 			sclFrames = #()
 			sclTimes = #()
 			
+			print (o.name + " position")
 			if (o.position.controller.keys.count > 0) then
 			(
 				for itemKey in o.position.controller.keys do 
@@ -594,8 +602,10 @@ fn exportPSO2Anim aqmFile =
 					posKeyTime = (itemKey.Time as integer)
 					--posKeyValue = (at time itemKey.Time o.Controller.Position)
 					posKeyValue = ((relativePosition o itemKey.Time).translationpart)
+					
+					print posKeyValue
 					append posTimes (posKeyTime / 160)
-					append posFrames PosKeyValue
+					append posFrames posKeyValue
 				)
 				--Ensure animation has an end keyframe. May cause bugginess ingame if it doesn't
 				if (posTimes[posTimes.count] * 160) != animationrange.end then
@@ -607,9 +617,9 @@ fn exportPSO2Anim aqmFile =
 			(
 				posKeyValue = o.pos
 				posKeyValue = ((relativePosition o 0).translationpart)
+				print posKeyValue
 				append posFrames posKeyValue
 			)
-			
 			
 			--Only store keys if it has them
 			if (o.rotation.controller.keys.count > 0) then
@@ -636,12 +646,22 @@ fn exportPSO2Anim aqmFile =
 			)
 			
 			--Only store keys if it has them
+			print (o.name + " scale")
 			if (o.scale.controller.keys.count > 0) then
 			(
 				for itemKey in o.scale.controller.keys do 
 				(
 					sclKeyTime = (itemKey.Time as integer)
 					sclKeyValue = (at time itemKey.Time o.Controller.Scale)
+					
+					--Remove parent's scaling influence from this value if there is one
+					if o.parent != undefined then
+					(
+						parScale = (at time itemKey.Time o.parent.Controller.Scale)
+						sclKeyValue /= parScale
+					)
+					print sclKeyValue
+					
 					append sclTimes (sclKeyTime / 160)
 					append sclFrames sclKeyValue
 				)
@@ -653,7 +673,17 @@ fn exportPSO2Anim aqmFile =
 				)
 			) else
 			(
-				append sclFrames (at time 0 o.Controller.Scale)
+				sclKeyValue = (at time 0 o.Controller.Scale)
+				--Remove parent's scaling influence from this value if there is one
+				if o.parent != undefined then
+				(
+					parScale = (at time 0 o.parent.Controller.Scale)
+					sclKeyValue /= parScale
+				)
+				sclKeyValue = [1,1,1]
+				print sclKeyValue
+				
+				append sclFrames sclKeyValue
 			)
 			
 			--Check how nodes should be added
@@ -786,6 +816,7 @@ fn exportPSO2Anim aqmFile =
 	animKeyTimeAddress = #()
 	
 	bookMark = undefined
+		
 	--BoneAnims
 	for i = 1 to boneParams.count do
 	(
@@ -840,15 +871,7 @@ fn exportPSO2Anim aqmFile =
 		WriteLongLong pso2Anim 0 -- 0 padding
 		
 		append animParamAddresses (nodeAnim nodeExpName:i nodePosFrames:posAdd nodeRotFrames:rotAdd nodeSclFrames:sclAdd nodePosTimings:posTimeAdd nodeRotTimings:rotTimeAdd nodeSclTimings:sclTimeAdd)
-		
-		--Value to scale anim values by
-		scaleVal = 1
-		if ( autoSizeCheckBox.checked == true) then
-		(
-			scaleVal = autoSizeSpinner.value
-		) 
-			
-		
+	
 		--Write Pos Timings (if > 1)
 		if (boneParams[i].nodePosFrames.count > 1) then
 		(
@@ -879,7 +902,13 @@ fn exportPSO2Anim aqmFile =
 			)
 		)
 		--Write Pos Data
-		
+		--Value to scale anim values by
+		scaleVal = 1
+		if ( autoSizeCheckBox.checked == true) then
+		(
+			scaleVal = autoSizeSpinner.value
+		) 
+
 		--Write pos address and continue
 		bookMark = (ftell pso2Anim)
 		fseek pso2Anim animParamAddresses[i].nodePosFrames #seek_set
@@ -1280,8 +1309,6 @@ fn exportPSO2Anim aqmFile =
 
 on animImportPSO2 pressed do
 (
-	--try
-	--(
 	if loadClear.checked then
 	(
 		ClearAnimations()
@@ -1293,26 +1320,22 @@ on animImportPSO2 pressed do
 				types:"PSO2 Motion AQM/TRM (*.aqm,*.trm)|*.aqm;*.trm|All Files (*.*)|*.*|"
 
 	--Load the Animation in
-	loadPSO2Anim animFileName
-	--)
-	--catch
-	--(
-	--)
+	if animFileName != undefined then
+	(
+		loadPSO2Anim animFileName
+	)
 )
 
 on animExportPSO2 pressed do
 (
-	--try
-	--(
-		-- Open up a dialog box
-		local animFileName = getSaveFileName caption:"Export pso2 .aqm/.trm" \
-				types:"pso2 .aqm (*.aqm)|*.aqm|pso2 .trm (*.trm)|*.trm|All Files (*.*)|*.*|"
-
+	-- Open up a dialog box
+	local animFileName = getSaveFileName caption:"Export pso2 .aqm/.trm" \
+			types:"pso2 .aqm (*.aqm)|*.aqm|pso2 .trm (*.trm)|*.trm|All Files (*.*)|*.*|"
+		
+	if animFileName != undefined then
+	(
 		exportPSO2Anim animFileName
-	--)
-	--catch
-	--(
-	--)
+	)
 )
 
 on autoSizeCheckBox changed nowChecked do
