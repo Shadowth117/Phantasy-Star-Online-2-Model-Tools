@@ -394,11 +394,11 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		--Write user properties to allow for animation export after if desired
 		if getUserProp o "BoneShort1" == undefined then
 		(
-			setUserProp o "BoneShort1" 0x1C0
+			setUserProp o "BoneShort1" "01C0"
 		)
 		if getUserProp o "BoneShort2" == undefined then
 		(
-			setUserProp o "BoneShort2" 0x0
+			setUserProp o "BoneShort2" 0
 		)
 		if getUserProp o "EffectNode" == undefined then
 		(
@@ -429,12 +429,15 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		(
 			rotBuffer = rotBuffer + " "
 		)*/
-		
-		
+		bMScale = boneMatrix.scalePart
+		bMScale = inverse (scaleMatrix bMScale)
+		boneMatrix *= bMScale
+		relBoneMatrix *= bMScale
 		
 		boneFirstChild = undefined
 		boneNextSibling = undefined
-				
+		
+		
 		if (ResizeChecked == true) then 
 		(
 			boneMatrix.translation *= ( 1 / ResizeValue )
@@ -444,7 +447,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		--Get Bone bitflag shorts if they exist
 		if((getUserProp o "BoneShort1") != undefined) then
 		(
-			boneShort1 = (substring ((getUserProp o "BoneShort1") as string) 1 4) 
+			boneShort1 = (substring ((getUserProp o "BoneShort1") as string) 1 4)
 			boneShort2 = (substring ((getUserProp o "BoneShort2") as string) 1 4) 
 		)
 		else
@@ -938,7 +941,7 @@ fn GetPSO2BoneArray includeEffNodes =
 		--Write user properties to allow for animation export after if desired
 		if getUserProp o "BoneShort1" == undefined then
 		(
-			setUserProp o "BoneShort1" 0x1C0
+			setUserProp o "BoneShort1" "01C0"
 		)
 		if getUserProp o "BoneShort2" == undefined then
 		(

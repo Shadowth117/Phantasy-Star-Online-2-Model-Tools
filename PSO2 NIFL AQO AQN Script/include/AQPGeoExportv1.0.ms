@@ -123,6 +123,7 @@ fn originMinMax objList ResizeChecked ResizeValue YZRot =
 		for i = 1 to count do
 		(
 			vert = getVert o i
+			vert *= o.transform.scale
 			if maxPoint == undefined then
 			(
 				maxPoint = copy vert
@@ -1010,26 +1011,33 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 				) else
 				(
 					--See if there's already an existing vertex with the same attributes
-					arrCheck = true
-					for i = 1 to pso2VertArr[faceVerts[v]].VertUV1Array.count while arrCheck == true do
+					arrCheck = false
+					for i = 1 to pso2VertArr[faceVerts[v]].VertUV1Array.count while arrCheck == false do
 					(
 						--Check attribute equivalence. Ignore binormal/tangent arrays for this since they're generated from UV1 + vertex position and vertex position will remain the same
-						if pso2VertArr[faceVerts[v]].VertColorArray != tempVert.VertColorArray or pso2VertArr[faceVerts[v]].VertColor2Array != tempVert.VertColor2Array or pso2VertArr[faceVerts[v]].VertUV1Array != tempVert.VertUV1Array or pso2VertArr[faceVerts[v]].VertUV2Array != tempVert.VertUV2Array or pso2VertArr[faceVerts[v]].VertUV3Array != tempVert.VertUV3Array then
+						if pso2VertArr[faceVerts[v]].VertColorArray[i] == tempVert.VertColorArray[1] and pso2VertArr[faceVerts[v]].VertColor2Array[i] == tempVert.VertColor2Array[1] and pso2VertArr[faceVerts[v]].VertUV1Array[i] == tempVert.VertUV1Array[1] and pso2VertArr[faceVerts[v]].VertUV2Array[i] == tempVert.VertUV2Array[1] and pso2VertArr[faceVerts[v]].VertUV3Array[i] == tempVert.VertUV3Array[1] then
 						(
 							--Add face to current vert data's equivalent faces list
 							append pso2VertArr[faceVerts[v]].VertFaceArray[i] f
-							arrCheck = false
+							arrCheck = true
 						)
+						/*
+						if pso2VertArr[faceVerts[v]].VertColorArray[i] != tempVert.VertColorArray[1] or pso2VertArr[faceVerts[v]].VertColor2Array[i] != tempVert.VertColor2Array[1] or pso2VertArr[faceVerts[v]].VertUV1Array[i]
+							!= tempVert.VertUV1Array[1] or pso2VertArr[faceVerts[v]].VertUV2Array[i] != tempVert.VertUV2Array[1] or pso2VertArr[faceVerts[v]].VertUV3Array[i] != tempVert.VertUV3Array[1] then
+						(
+
+							arrCheck = false
+						)*/
 					)
 					
 					--If not found, add it as its own entry
 					if arrCheck == false then
 					(
-						append pso2VertArr[faceVerts[v]].VertColorArray tempVert.VertColorArray 
-						append pso2VertArr[faceVerts[v]].VertColor2Array tempVert.VertColor2Array 
-						append pso2VertArr[faceVerts[v]].VertUV1Array tempVert.VertUV1Array 
-						append pso2VertArr[faceVerts[v]].VertUV2Array tempVert.VertUV2Array 
-						append pso2VertArr[faceVerts[v]].VertUV3Array tempVert.VertUV3Array
+						append pso2VertArr[faceVerts[v]].VertColorArray tempVert.VertColorArray[1]
+						append pso2VertArr[faceVerts[v]].VertColor2Array tempVert.VertColor2Array[1]
+						append pso2VertArr[faceVerts[v]].VertUV1Array tempVert.VertUV1Array[1]
+						append pso2VertArr[faceVerts[v]].VertUV2Array tempVert.VertUV2Array[1]
+						append pso2VertArr[faceVerts[v]].VertUV3Array tempVert.VertUV3Array[1]
 						append pso2VertArr[faceVerts[v]].VertFaceArray #(f)
 						--append pso2VertArr[faceVerts[v]].VertRendNormalArray faceRNrms[v]
 					)
@@ -1046,42 +1054,54 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 		for f = 1 to fCount do
 		(
 			faceVerts = #()
-			faceVerts[1] = objFaces[f][1]; faceVerts[2] = objFaces[f][2]; faceVerts[3] = objFaces[f][3]
+			faceVerts[1] = objFaces[f].x; faceVerts[2] = objFaces[f].y; faceVerts[3] = objFaces[f].z
+			faceIndex = 1
 			for v in faceVerts do
 			(
 				--loop through verts and access pso2VertArr with them. If the vert for that face isn't the first vertdata set for that vertex, create a new pso2Vert at end of vertarray with that data.
-				faceFound == false
+				faceFound = false
 				for vertData = 1 to pso2VertArr[v].VertUV1Array.count while faceFound == false do
 				(
-					
-					for face in pso2VertArr[v].VertFaceArray[vertData] while faceFound == false do
+					if vertData != 1 then
 					(
-						if f == face then
+						for face in pso2VertArr[v].VertFaceArray[vertData] while faceFound == false do
 						(
-							faceFound = true
+							if f == face then
+							(
+								faceFound = true
+							)
+						)
+						if faceFound == true then
+						(
+							tempVert = pso2Vert()
+							tempVert.VertPos = pso2VertArr[v].VertPos
+							tempVert.VertWeights = pso2VertArr[v].VertWeights
+							tempVert.VertBones = pso2VertArr[v].VertBones
+							tempVert.VertNormal = pso2VertArr[v].VertNormal
+							tempVert.VertBinormalArray = #()
+							tempVert.VertTangentArray = #()
+							tempVert.VertColorArray = #()
+							tempVert.VertColor2Array = #()
+							tempVert.VertUV1Array = #()
+							tempVert.VertUV2Array = #()
+							tempVert.VertUV3Array = #()
+							tempVert.VertFaceArray = #()
+							--tempVert.VertRendNormalArray = pso2VertArr[v].VertRendNormalArray
+							append tempVert.VertColorArray  	pso2VertArr[v].VertColorArray[vertData]
+							append tempVert.VertColor2Array  	pso2VertArr[v].VertColor2Array[vertData]
+							append tempVert.VertUV1Array  		pso2VertArr[v].VertUV1Array[vertData]
+							append tempVert.VertUV2Array  		pso2VertArr[v].VertUV2Array[vertData]
+							append tempVert.VertUV3Array  		pso2VertArr[v].VertUV3Array[vertData]
+							append tempVert.VertFaceArray 		#(f)
+							
+							pso2VertArr[pso2VertArr.count+1] = tempVert
+							--append pso2VertArr[v].VertUNRMs pso2VertArr.count
+							objFaces[f][faceIndex] = pso2VertArr.count
+							--free tempVert
 						)
 					)
-					if faceFound == true and vertData != 1 then
-					(
-						tempVert = pso2Vert()
-						tempVert.VertPos = pso2VertArr[v].VertPos
-						tempVert.VertWeights = pso2VertArr[v].VertWeights
-						tempVert.VertBones = pso2VertArr[v].VertBones
-						tempVert.VertNormal = pso2VertArr[v].VertNormal
-						--tempVert.VertRendNormalArray = pso2VertArr[v].VertRendNormalArray
-						append tempVert.VertColorArray  	pso2VertArr[v].VertColorArray[vertData]
-						append tempVert.VertColor2Array  	pso2VertArr[v].VertColor2Array[vertData]
-						append tempVert.VertUV1Array  		pso2VertArr[v].VertUV1Array[vertData]
-						append tempVert.VertUV2Array  		pso2VertArr[v].VertUV2Array[vertData]
-						append tempVert.VertUV3Array  		pso2VertArr[v].VertUV3Array[vertData]
-						append tempVert.VertFaceArray 		f
-						
-						pso2VertArr[pso2VertArr.count+1] = tempVert
-						--append pso2VertArr[v].VertUNRMs pso2VertArr.count
-						objFaces[f][v] = pso2VertArr.count
-						--free tempVert
-					)
 				)
+				faceIndex += 1
 			)
 		)
 		
@@ -1221,9 +1241,12 @@ fn calcUNRMs meshData unrmAvg =
 	
 	--Go through all verts and check for matches. Only append UNRMs if there's more than one in the unrm temp struct (ie at least one match)
 	
-	normals = undefined
+	
 	for m = 1 to meshData.count do
 	(
+		normals = undefined
+		binormals = undefined
+		tangents = undefined
 		for v = 1 to meshData[m].MeshVerts.count do
 		(
 			unrm = #()
@@ -1231,6 +1254,8 @@ fn calcUNRMs meshData unrmAvg =
 			if (unrmAvg == true) then
 			(
 				normals = meshData[m].MeshVerts[v].VertNormal
+				binormals = meshData[m].MeshVerts[v].VertBinormalArray[1]
+				tangents = meshData[m].MeshVerts[v].VertTangentArray[1]
 			)
 			for n = 1 to meshData.count do
 			(
@@ -1245,6 +1270,8 @@ fn calcUNRMs meshData unrmAvg =
 						if (unrmAvg == true) then
 						(
 							normals += meshData[n].MeshVerts[w].VertNormal
+							binormals += meshData[m].MeshVerts[w].VertBinormalArray[1]
+							tangents += meshData[m].MeshVerts[w].VertTangentArray[1]
 						)
 					)
 				)
@@ -1257,9 +1284,13 @@ fn calcUNRMs meshData unrmAvg =
 				if (unrmAvg == true) then
 				(
 					normals = normalize normals
+					binormals = normalize binormals
+					tangents = normalize tangents
 					for vert in unrm do
 					(
 						meshData[vert.MeshNum].MeshVerts[vert.VertId].VertNormal = normals
+						meshData[vert.MeshNum].MeshVerts[vert.VertId].VertBinormalArray[1] = binormals
+						meshData[vert.MeshNum].MeshVerts[vert.VertId].VertTangentArray[1] = tangents
 					)
 				)							
 			)
