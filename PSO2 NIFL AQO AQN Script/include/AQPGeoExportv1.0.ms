@@ -73,8 +73,7 @@ struct pso2Vert
 	VertUV1Array,
 	VertUV2Array,
 	VertUV3Array,
-	VertFaceArray,
-	VertUNRMs
+	VertFaceArray
 )
 
 struct pso2Mesh
@@ -1096,7 +1095,15 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 							
 							pso2VertArr[pso2VertArr.count+1] = tempVert
 							--append pso2VertArr[v].VertUNRMs pso2VertArr.count
-							objFaces[f][faceIndex] = pso2VertArr.count
+							--objFaces[f][faceindex] = pso2VertArr.count
+
+							case faceIndex of
+							(
+								1: (objFaces[f].x = pso2VertArr.count)
+								2: (objFaces[f].y = pso2VertArr.count)
+								3: (objFaces[f].z = pso2VertArr.count)
+								default: (print "Error!"; print v)
+							)
 							--free tempVert
 						)
 					)
@@ -1270,8 +1277,8 @@ fn calcUNRMs meshData unrmAvg =
 						if (unrmAvg == true) then
 						(
 							normals += meshData[n].MeshVerts[w].VertNormal
-							binormals += meshData[m].MeshVerts[w].VertBinormalArray[1]
-							tangents += meshData[m].MeshVerts[w].VertTangentArray[1]
+							binormals += meshData[n].MeshVerts[w].VertBinormalArray[1]
+							tangents += meshData[n].MeshVerts[w].VertTangentArray[1]
 						)
 					)
 				)
@@ -1800,7 +1807,13 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 		WriteLong pso2Model 0x1FF	-- 0x1FF
 		WriteLong pso2Model 3		-- 3 usually
 		WriteLong pso2Model aqpMatExtra.TwoSided[mat]	-- 1 Two-sided, 0 Backface Cull, 2 used in persona live dance models but unknown
-		WriteLong pso2Model	1		-- 1 Alpha blend enabling setting
+		if aqpMatExtra.MatAlphaType[mat] == "opaque" then  -- 1 Alpha blend enabling setting
+		(
+			WriteLong pso2Model	0
+		) else
+		(
+			WriteLong pso2Model	1		
+		)
 		WriteLong pso2Model 5		-- 5 usually
 		WriteLong pso2Model 6		-- 6 usually
 		WriteLong pso2Model 1		-- 1 usually
