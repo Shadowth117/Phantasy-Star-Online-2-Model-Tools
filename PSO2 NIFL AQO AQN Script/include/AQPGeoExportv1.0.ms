@@ -266,18 +266,19 @@ fn computeTangentSpace objFaces pso2VertArr YZRot =
 				(
 					vertsBin[face[i]] = binormal
 					vertsTan[face[i]] = tangent
-					vertsNorm[face[i]] = normal
+					--vertsNorm[face[i]] = normal
 					--vertsCounter[face[i]] = 1
 				) else
 				(
 					vertsBin[face[i]] += binormal
 					vertsTan[face[i]] += tangent
-					vertsNorm[face[i]] += normal
+					--vertsNorm[face[i]] += normal
 					--vertsCounter[face[i]] += 1
 				)
 			)
 		)
 		
+		/*    --Average normals from face normals
 		for i = 1 to vertsNorm.count do
 		(
 			if YZRot == true then
@@ -287,25 +288,29 @@ fn computeTangentSpace objFaces pso2VertArr YZRot =
 				vertsNorm[i].z = -temp
 			)
 			vertsNorm[i] = normalize vertsNorm[i]
-		)	
+		)	*/
+		
+		
 		for i = 1 to vertsBin.count do
 		(
+			/* YZRot proooobably unnecessary due to previous yz swap on position
 			if YZRot == true then
 			(
 				temp = vertsBin[i].y
 				vertsBin[i].y = vertsBin[i].z
 				vertsBin[i].z = -temp
-			)
+			)*/
 			vertsBin[i] = normalize vertsBin[i]
 		)
 		for i = 1 to vertsTan.count do
 		(
+			/* YZRot proooobably unnecessary due to previous yz swap on position
 			if YZRot == true then
 			(
 				temp = vertsTan[i].y
 				vertsTan[i].y = vertsTan[i].z
 				vertsTan[i].z = -temp
-			)
+			)*/
 			vertsTan[i] = normalize vertsTan[i]
 		)
 		
@@ -895,8 +900,8 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 						tempPos.y = tempZ
 						
 						tempNrm = tempVert.VertNormal.z
-						tempVert.VertNormal.z = tempVert.VertNormal.y
-						tempVert.VertNormal.y = -tempNrm
+						tempVert.VertNormal.z = -tempVert.VertNormal.y
+						tempVert.VertNormal.y = tempNrm
 					)
 					
 					if ResizeChecked == true then
@@ -1072,10 +1077,18 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 						)
 						if faceFound == true then
 						(
+							weights = #()
+							_bones = #()
+							for i = 1 to 4 do
+							(
+								append weights pso2VertArr[v].VertWeights[i]
+								append _bones pso2VertArr[v].VertBones[i]
+							)
+							
 							tempVert = pso2Vert()
 							tempVert.VertPos = pso2VertArr[v].VertPos
-							tempVert.VertWeights = pso2VertArr[v].VertWeights
-							tempVert.VertBones = pso2VertArr[v].VertBones
+							tempVert.VertWeights = weights
+							tempVert.VertBones = _bones
 							tempVert.VertNormal = pso2VertArr[v].VertNormal
 							tempVert.VertBinormalArray = #()
 							tempVert.VertTangentArray = #()
