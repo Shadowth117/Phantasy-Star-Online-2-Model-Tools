@@ -373,6 +373,7 @@ fn GetMatExtras aqpMats difWhite =
 	matExtras.TextureIdSets = #()
 	matExtras.TwoSided = #()
 	
+	matId = 1
 	for mat in aqpMats do
 	(
 		--Filterstring first ( ) for shadertype, second shadertype after "," inside shadertype ( ), filterstring { } for the alpha type. Append unique shaders and set the index for the respective materials. Append all alpha types
@@ -486,14 +487,15 @@ fn GetMatExtras aqpMats difWhite =
 				append textureSet "generic_tex_n.dds"
 			) else
 			(
+				if mat.diffuse != undefined then
+				(
+					difColor = (GetProperty mat #diffuseColor)
+					append matExtras.MatDiffuseColor difColor
+					difColorsGrabbed = true
+				)
 				if mat.diffuseMap != undefined then
 				(
 					dif = (getFilenameFile mat.diffuseMap.filename) + ".dds"
-					if difWhite == false then
-					(
-						append matExtras.MatDiffuseColor mat.diffuse
-						difColorsGrabbed = true
-					)
 					append textureSet dif
 					append textureIdSet texCount
 					texCount += 1
@@ -525,11 +527,17 @@ fn GetMatExtras aqpMats difWhite =
 		append matExtras.TextureIdSets textureIdSet
 		
 		--Default to white if not defined or if white mode is on
-		if difColorsGrabbed == false or difWhite == true then
+		if difWhite == true and (matchPattern mat.name pattern:"*[UseColor]*") == false then
 		(
-			append matExtras.MatDiffuseColor (color 255 255 255 255)
+			print ("Hello " + matId as string)
+			matExtras.MatDiffuseColor[matId] = (color 255 255 255 255)
 		)
-		
+		print matExtras.MatDiffuseColor[matId]
+		if difColorsGrabbed == false then
+		(
+			matExtras.MatDiffuseColor[matId] = (color 255 255 255 255)
+		)
+		matId += 1
 	)
 	matExtras.TextureCount = texCount
 	
@@ -1807,6 +1815,11 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 		if (filter2.count > 1) then
 		(
 			matName = filter2[2]
+		)
+		filter3 = (filterstring matName "]")
+		if (filter3.count > 1) then
+		(
+			matName = filter3[filter3.count]
 		)
 
 		WriteFixedLengthString pso2Model matName 0x20
