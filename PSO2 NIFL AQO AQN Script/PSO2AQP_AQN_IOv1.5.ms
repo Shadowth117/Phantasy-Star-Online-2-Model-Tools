@@ -39,31 +39,30 @@ rollout objImport "PSO2 AQP/AQN Tool"
 	)
 	group "Settings"
 	(
-		checkBox autoSizeCheckBox "Rescale" checked:true align:#center
+		checkBox autoSizeCheckBox "Rescale" checked:true align:#left
 		spinner autoSizeSpinner "Scale by:" align:#center type:#float range:[0,10000,100] enabled:false
-		checkBox YZCheckBox "Y-Z Axis Flip" checked: true align:#center
-		checkBox UVFlip "Vertical UV Flip" checked: true align:#center
-		checkBox PSO2Bones "Skin with PSO2 bones" checked:true align:#center
-		checkBox BonesByFN "Bones by model filename" checked:true align:#center
+		checkBox YZCheckBox "Y-Z Axis Flip" checked: true align:#left
+		checkBox UVFlip "Vertical UV Flip" checked: true align:#left
+		checkBox PSO2Bones "Skin with PSO2 bones" checked:true align:#left
+		checkBox BonesByFN "Bones by model filename" checked:true align:#left
 		--checkBox prsVals "PRS values on bones" checked:false align:#center
-		checkBox KeepBoneIds "Bone IDs in object name" checked:true align:#center
+		checkBox KeepBoneIds "Bone IDs in object name" checked:true align:#left
 	)	
 	group "Import"
 	(
 		button importButton "Import..."
-	)
-	group "Batch Import from Path"
-	(
-		button importPath "Import..."
+		button importPath "Batch Import..."
 	)
 	group "Export AQP/TRP"
 	(
 		button exportAQPButton "Export..."
-		checkBox playerModel "Player Model" checked:true align:#center
-		checkBox difWhite "White Diffuse Tint" checked:true align:#center
-		checkBox unrmAvg "Average UNRM Normals" checked:true align:#center
+		checkBox playerModel "Player Model (Add UNRMS)" checked:true align:#left
+		checkBox difWhite "White Diffuse Tint" checked:true align:#left
+		checkBox unrmAvg "Average UNRM Normals" checked:true align:#left
+		checkBox faceNormals "Use Face Normals" checked:false align:#left
 		Label exportNote "Note: Vertex weights past the"
-		Label exportNote2 "4th greatest are redistributed"
+		Label exportNote2 "4th greatest are redistributed."
+		Label exportNote3 "Object Groups will be Ungrouped."
 	)
 	/*
 	group "Convert hierarchy to bones"
@@ -1131,7 +1130,7 @@ rollout objImport "PSO2 AQP/AQN Tool"
 				messageBox "Filename with extension must be less than 32 characters long"
 			) else
 			(
-				GeoExport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked playerModel.checked difWhite.checked unrmAvg.checked
+				GeoExport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked playerModel.checked difWhite.checked unrmAvg.checked faceNormals.checked
 			)
 		)
 
@@ -1201,4 +1200,4 @@ rollout objImport "PSO2 AQP/AQN Tool"
 		autoSizeSpinner.enabled = nowChecked
 	)
 )
-createDialog objImport 160 630
+createDialog objImport 180 650
