@@ -86,7 +86,8 @@ struct pso2Mesh
 	MeshId,
 	MeshBonePalette,
 	MeshValidVTypes,
-	MeshVertSize   
+	MeshVertSize,
+	AvgNormals
 )
 
 struct VSetOff
@@ -213,7 +214,7 @@ fn originMinMax objList ResizeChecked ResizeValue YZRot =
 --Adapted from this: https://forums.cgsociety.org/t/finding-bi-normals-tangents/975005/8 
 --Binormals and tangents for each face are calculated and each face's values for a particular vertex are summed and averaged for the result before being normalized
 --Though vertex position is used, due to the nature of the normalization applied during the process, resizing is unneeded.
-fn computeTangentSpace objFaces pso2VertArr YZRot = 
+fn computeTangentSpace objFaces pso2VertArr YZRot faceNrms = 
 (
 	if pso2VertArr[1].VertUV1Array[1] != undefined then
 	(
@@ -266,35 +267,39 @@ fn computeTangentSpace objFaces pso2VertArr YZRot =
 				(
 					vertsBin[face[i]] = binormal
 					vertsTan[face[i]] = tangent
-					--vertsNorm[face[i]] = normal
+					vertsNorm[face[i]] = normal
 					--vertsCounter[face[i]] = 1
 				) else
 				(
 					vertsBin[face[i]] += binormal
 					vertsTan[face[i]] += tangent
-					--vertsNorm[face[i]] += normal
+					vertsNorm[face[i]] += normal
 					--vertsCounter[face[i]] += 1
 				)
 			)
 		)
 		
-		/*    --Average normals from face normals
-		for i = 1 to vertsNorm.count do
+		--Average normals from face normals
+		if faceNrms == true then
 		(
-			if YZRot == true then
+			for i = 1 to vertsNorm.count do
 			(
-				temp = vertsNorm[i].y
-				vertsNorm[i].y = vertsNorm[i].z
-				vertsNorm[i].z = -temp
+				/* YZRot proooobably unnecessary due to previous yz swap on position
+				if YZRot == true then
+				(
+					temp = vertsNorm[i].y
+					vertsNorm[i].y = vertsNorm[i].z
+					vertsNorm[i].z = -temp
+				)*/
+				vertsNorm[i] = normalize vertsNorm[i]
 			)
-			vertsNorm[i] = normalize vertsNorm[i]
-		)	*/
+		)
 		
 		
 		for i = 1 to vertsBin.count do
 		(
-			/* YZRot proooobably unnecessary due to previous yz swap on position
-			if YZRot == true then
+			-- YZRot proooobably unnecessary due to previous yz swap on position
+			/*if YZRot == true then
 			(
 				temp = vertsBin[i].y
 				vertsBin[i].y = vertsBin[i].z
@@ -304,8 +309,8 @@ fn computeTangentSpace objFaces pso2VertArr YZRot =
 		)
 		for i = 1 to vertsTan.count do
 		(
-			/* YZRot proooobably unnecessary due to previous yz swap on position
-			if YZRot == true then
+			-- YZRot proooobably unnecessary due to previous yz swap on position
+			/*if YZRot == true then
 			(
 				temp = vertsTan[i].y
 				vertsTan[i].y = vertsTan[i].z
@@ -316,6 +321,10 @@ fn computeTangentSpace objFaces pso2VertArr YZRot =
 		
 		for v = 1 to vertsTan.count do
 		(
+			if faceNrms == true then
+			(
+				pso2VertArr[v].VertNormal = vertsNorm[v]
+			)
 			append pso2VertArr[v].VertBinormalArray vertsBin[v]
 			append pso2VertArr[v].VertTangentArray vertsTan[v]
 			--gc light:false delayed:false
@@ -650,7 +659,7 @@ fn meshSplitter obj objInvArray =
 		max create mode
 		maxOps.cloneNodes obj newNodes:&newObjs
 		select newObjs[1]
-		addModifier newObjs[1] (turn_to_mesh()) before:newObjs[1].modifiers.count	
+		addModifier newObjs[1] (turn_to_mesh()) before:newObjs[1].modifiers.count #noprompt
 		maxOps.CollapseNodeTo newObjs[1] newObjs[1].modifiers.count false
 			
 		meshop.deleteFaces newObjs[1] objInvArray[i]
@@ -826,7 +835,7 @@ fn splitMeshByBoneCount meshes boneLimit =
 	splitMeshes
 )
 
-fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
+fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue faceNrms =
 (
 	meshData = #()
 	for obj in meshes do
@@ -1125,7 +1134,19 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 			)
 		)
 		
-		pso2VertArr = computeTangentSpace objFaces pso2VertArr YZRot
+		--Check if face normals should be used or not. If they exist, override the export-wide setting.
+		objFaceNrms = (getUserProp obj "FaceNormals")
+		if objFaceNrms != true or objFaceNrms != false then
+		(
+			objFaceNrms = undefined
+		)
+		if objFaceNrms == undefined then
+		(
+			pso2VertArr = computeTangentSpace objFaces pso2VertArr YZRot faceNrms
+		) else 
+		(
+			pso2VertArr = computeTangentSpace objFaces pso2VertArr YZRot objFaceNrms
+		)
 		
 		--Get Valid Vert Types and Size
 		validVertTypes = #()
@@ -1232,6 +1253,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue =
 		tempMesh.MeshBonePalette = objBonePalette
 		tempMesh.MeshValidVTypes = validVertTypes
 		tempMesh.MeshVertSize    = vertTypeSize
+		tempMesh.AvgNormals		 = (getUserProp obj "AverageNormals")
 		tempMesh.MeshId 		 = (getUserProp obj "meshId")
 		append meshData tempMesh
 		--free tempMesh
@@ -1260,22 +1282,16 @@ fn calcUNRMs meshData unrmAvg =
 	)
 	
 	--Go through all verts and check for matches. Only append UNRMs if there's more than one in the unrm temp struct (ie at least one match)
-	
-	
 	for m = 1 to meshData.count do
 	(
 		normals = undefined
-		binormals = undefined
-		tangents = undefined
 		for v = 1 to meshData[m].MeshVerts.count do
 		(
 			unrm = #()
 			append unrm (uNRMStruct MeshNum:m VertId:v)
-			if (unrmAvg == true) then
+			if (unrmAvg == true or meshData[m].AvgNormals == true and meshData[m].AvgNormals != false) then
 			(
 				normals = meshData[m].MeshVerts[v].VertNormal
-				binormals = meshData[m].MeshVerts[v].VertBinormalArray[1]
-				tangents = meshData[m].MeshVerts[v].VertTangentArray[1]
 			)
 			for n = 1 to meshData.count do
 			(
@@ -1287,11 +1303,9 @@ fn calcUNRMs meshData unrmAvg =
 					(
 						meshCheckArr[n][w] = true
 						append unrm (uNRMStruct MeshNum:(n) VertId:(w))
-						if (unrmAvg == true) then
+						if (unrmAvg == true or meshData[m].AvgNormals == true and meshData[m].AvgNormals != false) then
 						(
 							normals += meshData[n].MeshVerts[w].VertNormal
-							binormals += meshData[n].MeshVerts[w].VertBinormalArray[1]
-							tangents += meshData[n].MeshVerts[w].VertTangentArray[1]
 						)
 					)
 				)
@@ -1301,16 +1315,12 @@ fn calcUNRMs meshData unrmAvg =
 			(
 				unrmVertCount += unrm.count
 				append unrms unrm
-				if (unrmAvg == true) then
+				if (unrmAvg == true or meshData[m].AvgNormals == true and meshData[m].AvgNormals != false) then
 				(
 					normals = normalize normals
-					binormals = normalize binormals
-					tangents = normalize tangents
 					for vert in unrm do
 					(
 						meshData[vert.MeshNum].MeshVerts[vert.VertId].VertNormal = normals
-						meshData[vert.MeshNum].MeshVerts[vert.VertId].VertBinormalArray[1] = binormals
-						meshData[vert.MeshNum].MeshVerts[vert.VertId].VertTangentArray[1] = tangents
 					)
 				)							
 			)
@@ -1320,7 +1330,7 @@ fn calcUNRMs meshData unrmAvg =
 	UNRMContainer = (uNRMHolder UNRMs:unrms UNRMVertCount:unrmVertCount)
 )
 
-fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg =
+fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg faceNrms =
 (	
 	undo off
 	(
@@ -1333,7 +1343,8 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 		dotnet.loadAssembly (startPath + "\\NvTriStripDotNet.dll")
 		
 		--Gather meshes and create dummies for them for export
-		baseMeshes = for g in geometry where g.parent == undefined and g.children.count == 0 collect g
+		sceneList = objects as array; for i = 1 to sceneList.count do ( if isGroupHead sceneList[i] then (ungroup sceneList[i]) ); free sceneList
+		baseMeshes = for g in geometry where (g.parent == undefined or (isGroupHead g.parent)) and g.children.count == 0 and (isGroupHead g) != true collect g
 		boneList = GetPSO2BoneArray false
 		extraBoneList = #()
 		for i=1 to baseMeshes.count do 
@@ -1378,14 +1389,11 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 		
 		--Check for used vertex types: (0x0 Vertex Position) (0x1 Vertex Weights) (0x2 Vertex Normal) (0x21 Binormals) (0x20 Tangents) (0x3 Vertex Color) (0x4 Vertex Color 2?) (0xb Weight Index) (0x10 UV1 Buffer) (0x11 UV2 Buffer) (0x12 UV3 Buffer)
 			--Duplicate and separate vertices based on if multiple UV channels/VC channels exist for it. 
-		aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport YZRot ResizeChecked ResizeValue
+		aqpMeshData = pso2VertOptimizer aqpMeshes UNRMExport YZRot ResizeChecked ResizeValue faceNrms
 		print "Verts Optimized!"
 		
-		unrmData = undefined
-		if UNRMExport == true then
-		(
-			unrmData = (calcUNRMs aqpMeshData unrmAvg)
-		)
+		unrmData = (calcUNRMs aqpMeshData unrmAvg)
+		
 		
 		--Get all unique mats and assign the array index of each to the respective objects
 		aqpMats = GetUniqueMats aqpMeshData
@@ -1877,7 +1885,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 		for tex = 1 to texSet.count do
 		(
 			WriteLong pso2Model 0x16	-- 0x16
-			WriteLong pso2Model tex		-- TSET Texture Usage Order, 0,1,2,3
+			WriteLong pso2Model (tex - 1)		-- TSET Texture Usage Order, 0,1,2,3
 			-- UV set number (0 based), for env maps use -1 (FFFFFFFF)
 			if texSet[tex].count >= 7 then
 			(
@@ -1886,7 +1894,7 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 			(
 				texType = "_d"
 			)
-			if texSet[tex] == "pl_body_decal.dds" then
+			if (texSet[tex] == "pl_body_decal.dds") or (matchPattern texSet[tex] pattern:"*_decal.dds") then
 			(
 				WriteLong pso2Model 2
 			) else
