@@ -959,7 +959,7 @@ fn GetPSO2BoneArray includeEffNodes =
 		--Check how nodes should be added
 		if (getUserProp o "EffectNode") == false then
 		(
-			if (byOrder == true) then
+			if (byOrder == true and o != scenebones[1]) then
 			(
 				append scenebones o)
 			else

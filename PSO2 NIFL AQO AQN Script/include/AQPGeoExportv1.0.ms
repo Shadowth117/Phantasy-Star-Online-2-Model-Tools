@@ -529,10 +529,8 @@ fn GetMatExtras aqpMats difWhite =
 		--Default to white if not defined or if white mode is on
 		if difWhite == true and (matchPattern mat.name pattern:"*[UseColor]*") == false then
 		(
-			print ("Hello " + matId as string)
 			matExtras.MatDiffuseColor[matId] = (color 255 255 255 255)
 		)
-		print matExtras.MatDiffuseColor[matId]
 		if difColorsGrabbed == false then
 		(
 			matExtras.MatDiffuseColor[matId] = (color 255 255 255 255)
