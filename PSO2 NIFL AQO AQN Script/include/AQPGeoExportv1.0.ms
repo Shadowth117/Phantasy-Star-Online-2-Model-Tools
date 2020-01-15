@@ -1350,8 +1350,24 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 		
 		--Gather meshes and create dummies for them for export
 		sceneList = objects as array; for i = 1 to sceneList.count do ( if isGroupHead sceneList[i] then (ungroup sceneList[i]) ); free sceneList
-		baseMeshes = for g in geometry where (g.parent == undefined or (isGroupHead g.parent)) and g.children.count == 0 and (isGroupHead g) != true collect g
 		boneList = GetPSO2BoneArray false
+		baseMeshes = #()
+		for g in geometry where (g.parent == undefined or (isGroupHead g.parent)) and g.children.count == 0 and (isGroupHead g) != true and (finditem boneList.BoneList g) != true do
+		(
+			boneCheck = false
+			for h in boneList.BoneList do
+			(
+				if g == h then
+				(
+					boneCheck = true
+				)
+			)
+			if boneCheck == false then
+			(
+				append baseMeshes g
+			)
+		)
+		--baseMeshes = for g in geometry where (g.parent == undefined or (isGroupHead g.parent)) and g.children.count == 0 and (isGroupHead g) != true collect g
 		extraBoneList = #()
 		for i=1 to baseMeshes.count do 
 		(
