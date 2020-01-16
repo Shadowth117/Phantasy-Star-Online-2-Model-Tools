@@ -889,7 +889,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 	if(effParams.count > 0) then
 	(
 		fseek pso2Bones effNodeAdd #seek_set
-		WriteLong pso2Bones (effBegin)
+		WriteLong pso2Bones (effBegin - 0x20)
 	)
 	--    NOF0 null addresses
 	fseek pso2Bones nofSizeNof #seek_set
@@ -907,7 +907,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		delete rotDummy
 	)	
 	gc()
-) 
+)
 
 
 fn GetPSO2BoneArray includeEffNodes =
