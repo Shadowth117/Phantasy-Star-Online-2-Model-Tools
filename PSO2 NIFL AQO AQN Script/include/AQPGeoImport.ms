@@ -8,7 +8,6 @@
 ClearListener()
 FileIn @"MaxScriptExtensions\FileStreamReader.ms"
 FileIn @"MaxScriptExtensions\FileUtils.ms"
-FileIn @"UnusedBoneRemover.ms"
 FileIn @"AQNBoneImportv1.3.ms"
 
 struct matSetExtras
@@ -98,259 +97,6 @@ struct VSetOff
 	VTXLOff,
 	BPalOff,
 	EVertOff
-)
-
-fn WriteFixedLengthString stream str len =
-(
-	len -= 1
-	str = substring str 1 len -- avoid going over
-	extraSpace = len - (str.count) --calculate space left to len
-	WriteString stream str -- name
-	fseek pso2Model (-1) #seek_cur
-	for e = 1 to (extraSpace) do -- add padding if needed
-	(
-		WriteByte stream 0x0
-	)
-)
-
-fn originMinMax objList ResizeChecked ResizeValue YZRot =
-(
-	maxPoint = undefined
-	minPoint = undefined
-	
-	--Get maximum xyz values of every vertex in the mesh(es) given
-	for o in objList do
-	(
-		count = getNumVerts o
-		for i = 1 to count do
-		(
-			vert = getVert o i
-			vert *= o.transform.scale
-					
-			--Rot (rotate based on origin)
-			tempRot = (quattoeuler o.transform.rotation)
-			if tempRot.X != 0 or tempRot.Y != 0 or tempRot.Z != 0 then
-			(
-				tempPos = vert
-				--Make point relative to origin for translation if not already there
-				tempPos -= o.transform.pos
-				tempMatrix = (matrix3 [1,0,0] [0,1,0] [0,0,1] tempPos)
-				rotate tempMatrix tempRot
-				tempPos = tempMatrix.translationpart
-				
-				--Move point back relative to the object
-				tempPos += o.transform.pos
-				vert = tempPos
-			)
-			
-			if maxPoint == undefined then
-			(
-				maxPoint = copy vert
-				minPoint = copy vert
-			) else
-			(
-				if maxPoint.x < vert.x then 
-				( 
-					maxPoint.x = vert.x
-				)
-				if minPoint.x > vert.x then 
-				( 
-					minPoint.x = vert.x 
-				)
-				if maxPoint.y < vert.y then 
-				( 
-					maxPoint.y = vert.y 
-				)
-				if minPoint.y > vert.y then 
-				( 
-					minPoint.y = vert.y 
-				)
-				if maxPoint.z < vert.z then 
-				( 
-					maxPoint.z = vert.z 
-				)
-				if minPoint.z > vert.z then 
-				( 
-					minPoint.z = vert.z 
-				)
-			)
-		)
-	)
-	
-	--Calculate difference between all max and min points, then calculate model's center
-	difference = [(abs(maxPoint.x - minPoint.x) / 2), (abs(maxPoint.y - minPoint.y) / 2), (abs(maxPoint.z - minPoint.z) / 2)]
-	origin = [maxPoint.x - difference.x, maxPoint.y - difference.y, maxPoint.z - difference.z]
-	
-	--Calculate furthest real vertex in mesh(es) and store the distance for a bounding radius
-	radius = 0
-	for o in objList do
-	(
-		count = getNumVerts o
-		for i = 1 to count do
-		(
-			vert = getVert o i
-			dist = distance origin vert
-			if dist > radius then
-			(
-				radius = dist
-			)
-		)
-	)
-	/*
-	print("Max Values " + "x: " + (maxPoint.x as string) + " y: " + (maxPoint.y as string) + " z: " + (maxPoint.z as string) )
-	print("Min Values " + "x: " + (minPoint.x as string) + " y: " + (minPoint.y as string) + " z: " + (minPoint.z as string) )
-	print("Origin Values " + "x: " + (origin.x as string) + " y: " + (origin.y as string) + " z: " + (origin.z as string))
-	print("Radius: " + (radius as string))
-	*/
-	
-	--Recalculate based on scale as needed
-	if ResizeChecked == true then
-	(
-		origin.x *= (1 / ResizeValue)
-		origin.y *= (1 / ResizeValue)
-		origin.z *= (1 / ResizeValue)
-		radius *= (1 / ResizeValue)
-		difference.x *= (1 / ResizeValue)
-		difference.y *= (1 / ResizeValue)
-		difference.z *= (1 / ResizeValue)
-	)
-	
-	--Handle YZ orientating as needed
-	if YZRot == true then
-	(
-		temp = -origin.z
-		origin.z = origin.y
-		origin.y = temp
-		
-		temp = difference.z
-		difference.z = difference.y
-		difference.y = temp
-	)
-	
-	bounds = (aqpBounding OrigX:origin.x OrigY:origin.y OrigZ:origin.z Radius:radius DiffX:difference.x DiffY:difference.y DiffZ:difference.z)
-)
-
---Adapted from this: https://forums.cgsociety.org/t/finding-bi-normals-tangents/975005/8 
---Binormals and tangents for each face are calculated and each face's values for a particular vertex are summed and averaged for the result before being normalized
---Though vertex position is used, due to the nature of the normalization applied during the process, resizing is unneeded.
-fn computeTangentSpace objFaces pso2VertArr YZRot faceNrms = 
-(
-	if pso2VertArr[1].VertUV1Array[1] != undefined then
-	(
-		local vertsBin = #()
-		local vertsTan = #()
-		local vertsNorm = #()
-		--local vertsCounter = #()
-
-		for f = 1 to objfaces.count do
-		(
-			face = objFaces[f]
-			
-			local v1 = pso2VertArr[face[1]].VertPos
-			local v2 = pso2VertArr[face[2]].VertPos
-			local v3 = pso2VertArr[face[3]].VertPos
-			
-			local uv1 = pso2VertArr[face[1]].VertUV1Array[1]
-			local uv2 = pso2VertArr[face[2]].VertUV1Array[1]
-			local uv3 = pso2VertArr[face[3]].VertUV1Array[1]
-			
-			local dV1 = v1 - v2
-			local dV2 = v1 - v3
-
-			local dUV1 = uv1 - uv2
-			local dUV2 = uv1 - uv3
-			
-			local area = dUV1.x * dUV2.y - dUV1.y * dUV2.x
-			local sign = if area < 0 then -1 else 1
-			
-			local tangent = [0,0,1]
-
-			tangent.x = dV1.x * dUV2.y - dUV1.y * dV2.x
-			tangent.y = dV1.y * dUV2.y - dUV1.y * dV2.y
-			tangent.z = dV1.z * dUV2.y - dUV1.y * dV2.z
-
-			tangent = (normalize tangent) * sign 
-			
-			--Face normal
-			local u = v2 - v1
-			local v = v3 - v1
-			
-			fNormal = cross u v
-			
-			local normal = normalize fnormal
-			local binormal = (normalize (cross normal tangent)) * sign
-			
-			for i=1 to face.count do
-			(
-				if vertsBin[face[i]] == undefined then
-				(
-					vertsBin[face[i]] = binormal
-					vertsTan[face[i]] = tangent
-					vertsNorm[face[i]] = normal
-					--vertsCounter[face[i]] = 1
-				) else
-				(
-					vertsBin[face[i]] += binormal
-					vertsTan[face[i]] += tangent
-					vertsNorm[face[i]] += normal
-					--vertsCounter[face[i]] += 1
-				)
-			)
-		)
-		
-		--Average normals from face normals
-		if faceNrms == true then
-		(
-			for i = 1 to vertsNorm.count do
-			(
-				/* YZRot proooobably unnecessary due to previous yz swap on position
-				if YZRot == true then
-				(
-					temp = vertsNorm[i].y
-					vertsNorm[i].y = vertsNorm[i].z
-					vertsNorm[i].z = -temp
-				)*/
-				vertsNorm[i] = normalize vertsNorm[i]
-			)
-		)
-		
-		
-		for i = 1 to vertsBin.count do
-		(
-			-- YZRot proooobably unnecessary due to previous yz swap on position
-			/*if YZRot == true then
-			(
-				temp = vertsBin[i].y
-				vertsBin[i].y = vertsBin[i].z
-				vertsBin[i].z = -temp
-			)*/
-			vertsBin[i] = normalize vertsBin[i]
-		)
-		for i = 1 to vertsTan.count do
-		(
-			-- YZRot proooobably unnecessary due to previous yz swap on position
-			/*if YZRot == true then
-			(
-				temp = vertsTan[i].y
-				vertsTan[i].y = vertsTan[i].z
-				vertsTan[i].z = -temp
-			)*/
-			vertsTan[i] = normalize vertsTan[i]
-		)
-		
-		for v = 1 to vertsTan.count do
-		(
-			if faceNrms == true then
-			(
-				pso2VertArr[v].VertNormal = vertsNorm[v]
-			)
-			append pso2VertArr[v].VertBinormalArray vertsBin[v]
-			append pso2VertArr[v].VertTangentArray vertsTan[v]
-			--gc light:false delayed:false
-		)
-	)
-	
-	pso2VertArr
 )
 
 fn GetUniqueMats objList =
@@ -875,7 +621,7 @@ fn pso2VertOptimizer meshes UNRMExport YZRot ResizeChecked ResizeValue faceNrms 
 		objSkin = obj.skin
 		modPanel.setCurrentObject objSkin
 		
-		--Loop through faces for each mesh. Append the vertices, their values for respective maps on respective faces, add said faces to an array of the original vertex indices.
+		--Loop through faces for each mesh. Append the vertices, their values for respective maps on respective faces, and said faces to an array of the original vertex indices.
 		for f = 1 to fCount do
 		(
 			--Get verts of the face
@@ -2194,4 +1940,8 @@ fn GeoExport aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrmAvg
 	)
 	
 	print "Success!"
+)
+
+fn GeoImport aqpFile ResizeChecked ResizeValue YZRot =
+(
 )

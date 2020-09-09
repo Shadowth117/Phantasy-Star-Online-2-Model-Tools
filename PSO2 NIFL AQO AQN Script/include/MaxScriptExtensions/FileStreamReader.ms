@@ -568,11 +568,11 @@ struct FileStreamReader
 	public fn ReadCString =
 	(
 		local str = ""
-		local char = bit.intaschar ReadU8()
-		while (char != '\0') do
+		local char = (ReadU8())
+		while (char != 0x0) do
 		(
-			str += char
-			char = bit.intaschar ReadU8()
+			str += bit.intaschar char
+			char = (ReadU8())
 		)
 		
 		str

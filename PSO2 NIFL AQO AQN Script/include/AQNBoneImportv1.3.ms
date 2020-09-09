@@ -348,6 +348,8 @@ fn SkelImport aqnFile PRSChecked ResizeChecked ResizeValue YZRot BoneIDCheck =
 		delete rotDummy
 	)
 	
+	print "Bones Imported Successfully!"
+	
 	BoneDataArray
 )
 
@@ -907,6 +909,8 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot =
 		delete rotDummy
 	)	
 	gc()
+	
+	print "Bones Exported Successfully!"
 )
 
 
