@@ -27,8 +27,8 @@ fn SetImport fileName autoSize sizeVal yZflip =
 	for i = 1 to eStringCount do
 	(
 		print i
-		reader.SeekCur( 0x4 )
-		append eStrings (reader.ReadFixedLengthString 0x1C)
+		len = reader.ReadU32()
+		append eStrings (reader.ReadFixedLengthString (len - 0x4))
 	)
 	print "entity acquisition loop"
 	aDummy = dummy pos: ( [0, 0, 0] ) boxsize:[1,1,1] name: ( "entityParent")
