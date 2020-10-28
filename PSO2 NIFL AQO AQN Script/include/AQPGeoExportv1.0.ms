@@ -9,7 +9,7 @@ ClearListener()
 FileIn @"MaxScriptExtensions\FileStreamReader.ms"
 FileIn @"MaxScriptExtensions\FileUtils.ms"
 FileIn @"UnusedBoneRemover.ms"
-FileIn @"AQNBoneImportv1.3.ms"
+FileIn @"AQNBoneImportv1.4.ms"
 
 struct matSetExtras
 (
@@ -317,24 +317,7 @@ fn computeTangentSpace objFaces pso2VertArr YZRot faceNrms =
 		
 		for i = 1 to vertsBin.count do
 		(
-			-- YZRot proooobably unnecessary due to previous yz swap on position
-			/*if YZRot == true then
-			(
-				temp = vertsBin[i].y
-				vertsBin[i].y = vertsBin[i].z
-				vertsBin[i].z = -temp
-			)*/
 			vertsBin[i] = normalize vertsBin[i]
-		)
-		for i = 1 to vertsTan.count do
-		(
-			-- YZRot proooobably unnecessary due to previous yz swap on position
-			/*if YZRot == true then
-			(
-				temp = vertsTan[i].y
-				vertsTan[i].y = vertsTan[i].z
-				vertsTan[i].z = -temp
-			)*/
 			vertsTan[i] = normalize vertsTan[i]
 		)
 		
