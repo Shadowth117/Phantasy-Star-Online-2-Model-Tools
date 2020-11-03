@@ -183,9 +183,16 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 		--If the user wants to import PSO2 skinning, do so
 		if (useBones) then
 		(
+			ext = getFilenameType fileName
 			boneFileName = filterString (filenameFromPath fileName) "."
-			boneFileName = (currentPath + boneFileName[1] + ".aqn")
-		    aquaUtil.ReadBones (dotNetObject "System.String" boneFileName)
+			if(ext == ".trp") then
+			(
+				newExt = ".trn"
+			) else
+			(
+				newExt = ".aqn"
+			)
+			boneFileName = (currentPath + boneFileName[1] + newExt)
 			
 			if ((doesFileExist boneFileName) == false) then
 			(
@@ -194,6 +201,7 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 			
 			if (boneFileName != undefined) then
 			(
+				aquaUtil.ReadBones (dotNetObject "System.String" boneFileName)
 				pso2BoneArray = (SkelImportNET aquaUtil.aquaBones.item[0] false useAutoSize autoSizeValue useYZFlip keepBoneIds)
 			) else 
 			(
@@ -419,15 +427,14 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 					AddModifier newMesh skinMod
 					
 					--If there's proper weights, use them. Otherwise, the model is probably a rigid assignment and so we apply accordingly.
-					if model.vtxlList.item[i].vertWeights.Count > 0 and model.vtxlList.item[i].vertWeightIndices.Count > 0 then
+					if model.vtxlList.item[i].vertWeights.Count > 0 and model.vtxlList.item[i].vertWeightIndices.Count > 0 and model.vtxlList.item[i].bonePalette != undefined then
 					(
 						wts = model.vtxlList.item[i].trueVertWeights
 						ids = model.vtxlList.item[i].trueVertWeightIndices
 						
 						bonePalette = model.vtxlList.item[i].bonePalette
-						
 						--Apply Skinned Nodes 
-						for b = 0 to (bonePalette.count - 1) do
+						for b = 0 to (bonePalette.Count - 1) do
 						(
 							tempB = bonePalette.item[b] + 1
 							SkinOps.AddBone skinMod (pso2BoneArray[tempB].MaxBone) 0
@@ -639,7 +646,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 	
 	on openAQMButton pressed do
 	(
-		FileIn @"PSO2AQM_IO_v1.5.1ms"
+		FileIn @"PSO2AQM_IO_v1.5.1.ms"
 	)
 	
 )
