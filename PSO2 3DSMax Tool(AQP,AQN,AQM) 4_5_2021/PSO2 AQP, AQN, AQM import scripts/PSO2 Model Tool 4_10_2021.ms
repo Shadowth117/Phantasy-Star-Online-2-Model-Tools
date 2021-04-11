@@ -44,8 +44,7 @@ if ghostingDoneAlready == undefined then
 			)
 		)
 	)
-
-
+	
 	DisableWindowsGhosting = DisableProcessWindowsGhosting()
 	DisableWindowsGhosting.DisableProcessWindowsGhosting()
 )
@@ -197,6 +196,95 @@ fn importTCB fileName useAutoSize autoSizeValue useYZFlip =
 		-- Construct the mesh object
 		newMesh = mesh name:meshName pos:[0,0,0] \
 							vertices:vertArray faces:faceArray
+	)
+)
+
+fn importPRM fileName useAutoSize autoSizeValue useYZFlip =
+(
+	with undo off
+	(
+		startPath = getFilenamePath(getThisScriptFilename())
+		currentPath = getFilenamePath(fileName)
+		meshName = getFilenameFile(fileName) + getFilenameType(fileName)
+		dotnet.loadAssembly (startPath + @"\include\AquaLib\AquaModelLibrary.dll")
+		aquaUtil = dotNetObject "AquaModelLibrary.AquaUtil"
+		aquaUtil.ReadPRM (dotNetObject "System.String" fileName)
+			
+		model = aquaUtil.prmModels.item[0]
+		--Get vert array
+		vertArray = #()
+		vertCount = model.vertices.count
+		
+		vertArray[vertCount] = [0, 0, 0]
+		for vert = 0 to (vertCount - 1) do
+		(
+			vertVec3 = model.vertices.item[vert].pos
+			if useYZFlip then
+			(
+				vertP3 = [vertVec3.X, -vertVec3.Z, vertVec3.Y]
+			) else 
+			(
+				vertP3 = [vertVec3.X, vertVec3.Y, vertVec3.Z]
+			)
+			if useAutoSize then
+			(
+				vertP3 = vertP3 * autoSizeValue
+			)
+			vertArray[vert + 1] = vertP3
+		)
+		--Construct face array
+		faceArray = #()
+		psetTris = model.faces
+		
+		faceArray[psetTris.count] = [0,0,0]
+		for face = 0 to (psetTris.count - 1) do
+		(
+			faceVec3 = psetTris.item[face]
+			faceArray[face + 1] = [faceVec3.X + 1, faceVec3.Y + 1, faceVec3.Z + 1]
+		)
+		
+		-- Construct the mesh object
+		newMesh = mesh name:meshName pos:[0,0,0] \
+							vertices:vertArray faces:faceArray
+		
+		meshop.setMapSupport newMesh 1 true
+		meshop.setNumMapVerts newMesh 1 vertCount
+		meshop.setNumMapFaces newMesh 1 (meshop.getNumFaces newMesh) 
+		
+		for j = 0 to (vertCount - 1) do
+		(
+			meshop.setMapVert newMesh 1 (j + 1) [model.vertices.item[j].uv1.X, -model.vertices.item[j].uv1.Y, 0]
+		)
+		for j = 1 to (meshop.getNumFaces newMesh) do
+		(
+			face = getFace newMesh j
+			meshop.setMapFace newMesh 1 j face
+		)
+		
+		meshop.setNumMaps newMesh ((meshop.getNumMaps newMesh) + 1) keep:true
+		meshop.setMapSupport newMesh 2 true
+		meshop.setNumMapVerts newMesh 2 vertCount
+		meshop.setNumMapFaces newMesh 2 (meshop.getNumFaces newMesh) 
+		
+		for j = 0 to (vertCount - 1) do
+		(
+			meshop.setMapVert newMesh 2 (j + 1) [model.vertices.item[j].uv2.X, -model.vertices.item[j].uv2.Y, 0]
+		)
+		for j = 1 to (meshop.getNumFaces newMesh) do
+		(
+			face = getFace newMesh j
+			meshop.setMapFace newMesh 2 j face
+		)
+		setNumCPVVerts newMesh newMesh.numverts
+
+		-- Set vertex coloring -- 
+		for j = 0 to (vertCount - 1) do
+		(
+			setvertcolor newMesh (j + 1) (color (model.vertices.item[j].color[1]) (model.vertices.item[j].color[2]) (model.vertices.item[j].color[3]) (model.vertices.item[j].color[4]))
+			meshop.setvertalpha newMesh -2 (j + 1) (model.vertices.item[j].color[4])
+		)
+		defaultVCFaces newMesh
+		newMesh.showVertexColors = true
 	)
 )
 
@@ -568,7 +656,7 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 		
 		--Maxscript gets funny about structs. This lets us create them somewhat normally
 		--Fun fact, inner classes MUST be accessed via a '+' instead of a '.'. Why? I don't know!
-		--activator = dotNetClass "activator"
+		activator = dotNetClass "activator"
 		vec2 = dotNetClass "System.Numerics.Vector2"
 		vec3 = dotNetClass "System.Numerics.Vector3"
 		vec4 = dotNetClass "System.Numerics.Vector4"
@@ -581,9 +669,13 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 		int32List = dotNetClass "System.Collections.Generic.List`1[System.Int32]"
 		strList = dotNetClass "System.Collections.Generic.List`1[System.String]"
 		byteArrClass = dotNetClass "System.Byte[]"
-		--activator.createInstance vec2
-		--activator.createInstance vec3
-		--activator.createInstance vec4
+		try
+		(
+			activator.createInstance vec2
+			activator.createInstance vec3
+			activator.createInstance vec4
+		)
+		catch ()
 		
 		GetMVert = meshop.getMapVert 
 		GetMFace = meshop.getMapFace 
@@ -1023,7 +1115,205 @@ fn GeoExportNet aqpFile ResizeChecked ResizeValue YZRot UNRMExport difWhite unrm
 	)
 )
 
+fn PRMDataCollector prmMesh fileName ResizeChecked ResizeValue YZRot prog =
+(
+	meshes = #()
+	append meshes prmMesh
 	
+	with undo off
+	(
+		startPath = getFilenamePath(getThisScriptFilename())
+		currentPath = getFilenamePath(fileName)
+		dotnet.loadAssembly (startPath + @"\include\AquaLib\AquaModelLibrary.dll")
+		aquaUtil = dotNetObject "AquaModelLibrary.AquaUtil"
+		max modify mode
+		matArray = #()
+		
+		activator = dotNetClass "activator"
+		vec2 = dotNetClass "System.Numerics.Vector2"
+		vec3 = dotNetClass "System.Numerics.Vector3"
+		vec4 = dotNetClass "System.Numerics.Vector4"
+		mdlSet = dotNetClass "AquaModelLibrary.AquaUtil+ModelSet"
+		aqo = dotNetClass "AquaModelLibrary.ClassicAquaObject"
+		vertSet = dotNetClass "AquaModelLibrary.AquaObject+VTXL"
+		genMate = dotNetClass "AquaModelLibrary.AquaObject+GenericMaterial"
+		genTris = dotNetClass "AquaModelLibrary.AquaObject+GenericTriangles"
+		netWeightsClass = dotNetClass "System.Collections.Generic.List`1[System.Single]"
+		int32List = dotNetClass "System.Collections.Generic.List`1[System.Int32]"
+		strList = dotNetClass "System.Collections.Generic.List`1[System.String]"
+		byteArrClass = dotNetClass "System.Byte[]"
+		try
+		(
+			activator.createInstance vec2
+			activator.createInstance vec3
+			activator.createInstance vec4
+		)
+		catch ()
+		
+		GetMVert = meshop.getMapVert 
+		GetMFace = meshop.getMapFace 
+		aqobj = dotNetObject aqo
+		
+		for msh = 1 to meshes.count do
+		(
+			--Create arrays to store weight data since they're slow to retrieve since they're from a modiifer. Ironically, accessing the data directly is usually faster so it's not worth doing this for positions. 
+			tempVertWeight = #()
+			tempVertIds = #()
+			tempVertWeight[meshes[msh].mesh.numVerts + 1] = #()
+			tempVertIds[meshes[msh].mesh.numVerts + 1] = #()
+			
+			tempMesh = dotNetObject genTris
+			tempMesh.vertCount = meshes[msh].mesh.numVerts
+			
+			--Set up vert data test booleans
+			useVertColor = meshop.getMapSupport meshes[msh].mesh 0
+			useVertAlpha = meshop.getMapSupport meshes[msh].mesh -2
+			useUV1 = meshop.getMapSupport meshes[msh].mesh 1
+			useUV2 = meshop.getMapSupport meshes[msh].mesh 2
+
+			for f = 1 to (getNumFaces meshes[msh]) do
+			(
+				--Get the material id and material. We'll need to remap all of these later
+				faceVerts = getface meshes[msh].mesh f
+				faceNrms = meshop.getFaceRNormals meshes[msh].mesh f
+				tempMesh.triList.Add(dotNetObject vec3 (faceVerts[1] - 1) (faceVerts[2] - 1) (faceVerts[3] - 1))
+				
+				--Populate face vertex data; We need to split this. It's more efficient if we can split it in .NET after it's gathered since maxscript chugs for these things
+				vertData = dotNetObject vertSet
+				--Get map information for each vertex
+				for v = 1 to faceVerts.count do
+				(					
+					tempPos = getVert meshes[msh] faceVerts[v]
+					tempNrms = faceNrms[v]
+					vertData.rawVertId.Add(faceVerts[v] - 1)
+					vertData.rawFaceId.Add(f - 1)
+					
+					if YZRot == true then
+					(
+						tempZ = tempPos.z
+						tempPos.z = -tempPos.y
+						tempPos.y = tempZ
+						
+						tempZ = tempNrms.z
+						tempNrms.z = -tempNrms.y
+						tempNrms.y = tempZ
+					)
+					if ResizeChecked == true then
+					(	
+						--Actual resizing
+						tempPos *= ( 1 / ResizeValue )
+					)
+					vertData.vertPositions.Add(dotNetObject vec3 tempPos.X tempPos.Y tempPos.Z)
+					if precisionNormals == false then
+					(
+						vertData.vertNormals.Add(dotNetObject vec3 tempNrms.X tempNrms.Y tempNrms.Z)
+					)
+					
+					--Get vert colors
+					if useVertColor == true then
+					(
+						vcolor = (GetMVert meshes[msh] 0 ((GetMFace meshes[msh] 0 f)[v])) as color
+						if useVertAlpha == true then
+						(
+							vcolor.alpha = (GetMVert meshes[msh] -2 (GetMFace meshes[msh] -2 1)[1]).x
+						) else 
+						(
+							vcolor.alpha = 255;
+						)
+						
+						vertData.vertColors.Add((dotnet.ValueToDotNetObject #(vcolor.b, vcolor.g, vcolor.r, vcolor.a) byteArrClass))
+					)
+					
+					--Get first set of UVs 
+					if useUV1 == true then
+					(
+						uv1 = (meshop.getMapVert meshes[msh] 1 ((meshop.getMapFace meshes[msh] 1 f)[v]))
+						vertData.uv1List.Add(dotNetObject vec2 uv1.X -uv1.Y)
+					)
+					
+					--Get second set of UVs 
+					if useUV2 == true then
+					(
+						uv2 = (meshop.getMapVert meshes[msh] 2 ((meshop.getMapFace meshes[msh] 2 f)[v]))
+						vertData.uv2List.Add(dotNetObject vec2 uv2.X -uv2.Y)
+					)
+					
+				)
+				tempMesh.faceVerts.Add(vertData)
+			)
+			if precisionNormals == true then
+			(
+				prog.value += 60 / meshes.count
+			) else (
+				prog.value += 80 / meshes.count
+			)
+			
+			aqobj.tempTris.Add(tempMesh)
+			print (meshes[msh].name + " processed.")
+		)
+		
+		--Precise normals
+		if precisionNormals == true then
+		(
+			for nrmMesh = 1 to meshes.count do
+			(
+				modi = Edit_Normals()
+				addmodifier meshes[nrmMesh] modi
+				modPanel.setCurrentObject modi
+				
+				_GetNumFaces = modi.GetNumFaces
+				_GetFaceDegree = modi.GetFaceDegree
+				_GetNormalID = modi.GetNormalID
+				_GetNormal = modi.GetNormal
+				
+				for f = 1 to _GetNumFaces() do
+				(
+					for v = 1 to _GetFaceDegree f do
+					(
+						id = _GetNormalID f v 
+						tempNrms = _GetNormal id
+						
+						if YZRot == true then
+						(
+							tempZ = tempNrms.z
+							tempNrms.z = -tempNrms.y
+							tempNrms.y = tempZ
+						)
+						
+						otherId = modi.GetVertexId f v
+						aqobj.tempTris.item[nrmMesh - 1].faceVerts.item[f - 1].vertNormals.Add(dotNetObject vec3 tempNrms.X tempNrms.Y tempNrms.Z)
+					)
+				)
+				
+				deletemodifier meshes[nrmMesh] modi
+				prog.value += 20 / meshes.count
+			)
+		)
+		
+		prog.value += 10 
+		
+		newSet = dotNetObject mdlSet
+		newSet.models.Add(aqobj)
+		aquaUtil.aquaModels.Add(newSet)
+		aquaUtil.ConvertToPRM()
+		aquaUtil.WritePRM fileName 4
+		prog.value += 10 
+		print (fileName + " was successfully output!")
+	)
+)
+
+--Only takes in the selected object on purpose. PRM can only be one model
+fn PRMExportNet fileName ResizeChecked ResizeValue YZRot prog =
+(
+	if $ != undefined then
+	(
+		with undo off
+		(
+			PRMDataCollector $ fileName ResizeChecked ResizeValue YZRot prog
+		)
+	)
+)
+
 rollout pso2ImportRollout "PSO2 Model Importer"
 (
 	--------------------
@@ -1049,7 +1339,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		button importButton "Import..."
 		button importPath "Batch Import..."
 	)
-	group "Export AQP/TRP (To be replaced)"
+	group "Export AQP/TRP/PRM"
 	(
 		button exportAQPButton "Export..."
 		checkBox playerModel "Player Model (Add UNRMS)" checked:true align:#left
@@ -1084,7 +1374,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		local objFileName = undefined
 		-- Open up a dialog box
 		objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 model" \
-					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb)|*.aqo;*.tro;*.aqp;*.trp;*.tcb|All Files (*.*)|*.*|"
+					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm|All Files (*.*)|*.*|"
         if (objFileName != undefined) then
 		(
 			importLOD = importLevelOfDetail.checked
@@ -1092,6 +1382,9 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 			if (getFilenameType objFileName) == ".tcb" then
 			(
 				importTCB objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
+			) else if (getFilenameType objFileName) == ".prm" then
+			(
+				importPRM objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
 			) else 
 			(
 				importAQO objFileName useBones.checked autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked true prog
@@ -1108,7 +1401,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 	(
 		-- Open up a dialog box
 		local objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 model" \
-					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb)|*.aqo;*.tro;*.aqp;*.trp;*.tcb|All Files (*.*)|*.*|"
+					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm|All Files (*.*)|*.*|"
 		
 		if objFileName != undefined then--if the user did not cancel
         (	
@@ -1123,6 +1416,9 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 			if (getFilenameType objFileName) == ".tcb"  then
 			(
 				importTCB objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
+			) else if (getFilenameType objFileName) == ".prm" then
+			(
+				importPRM objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
 			) else 
 			(
 				importAQO objFileName useBones.checked autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked true prog
@@ -1174,8 +1470,8 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 	on exportAQPButton pressed do
 	(
 		-- Open up a dialog box
-		local objFileName = getSaveFileName "Export pso2 .aqp/.trp/.aqo/.tro" \
-				types:"pso2 .aqp (*.aqp)|*.aqp|pso2 .trp (*.trp)|*.trp|pso2 .aqo (*.aqo)|*.aqo|pso2 .tro (*.tro)|*.tro|"
+		local objFileName = getSaveFileName "Export pso2 .aqp/.trp/.aqo/.tro/.prm (prm requires a single selected object)" \
+				types:"pso2 .aqp (*.aqp)|*.aqp|pso2 .trp (*.trp)|*.trp|pso2 .aqo (*.aqo)|*.aqo|pso2 .tro (*.tro)|*.tro|pso2 .prm (*.prm)|*.prm"
 
 
 		if (objFileName != undefined) then
@@ -1186,7 +1482,26 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 				messageBox "Filename with extension must be less than 32 characters long"
 			) else
 			(
-				GeoExportNet objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked playerModel.checked difWhite.checked unrmAvg.checked faceNormals.checked boundZero.checked baHack.checked meshDummies.checked prog
+				try
+				(
+					if (findstring objFileName ".prm") != undefined then
+					(
+						PRMExportNet objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked prog
+					) else 
+					(
+						GeoExportNet objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked playerModel.checked difWhite.checked unrmAvg.checked faceNormals.checked boundZero.checked baHack.checked meshDummies.checked prog
+					)
+				)
+				catch
+				(
+					if (findstring objFileName ".prm") != undefined then
+					(
+						PRMExportNet objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked prog
+					) else 
+					(
+						GeoExportNet objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked playerModel.checked difWhite.checked unrmAvg.checked faceNormals.checked boundZero.checked baHack.checked meshDummies.checked prog
+					)
+				)
 				prog.value = 0
 			)
 		)
