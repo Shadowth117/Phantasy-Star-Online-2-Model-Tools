@@ -15,11 +15,16 @@ button animImportPSO2 "Load PSO2 Anim" across:1 width:120 align:#center
 button animExportPSO2 "Export PSO2 Anim" across:1 width:120 align:#center
 checkBox loadClear "Clear Anim Data on Load" checked:true align:#left
 checkBox yzFlip "Y-Z Flip Anim" checked:true align:#left
-checkBox adaptScale "Adapt to hierarchical scaling" checked:true align:#left
+checkBox adaptScale "Adapt to hierarchical scaling (Do NOT use when editing!)" checked:true align:#left
 checkBox ignoreTranslate "Ignore Standard Translation keys (Use for non humanoid costumes)" checked:false align:#left
 checkBox matchNames "Match bone names (Use for loading anims on wrong model)"
+
 checkBox autoSizeCheckBox "Use Base Scale" checked:true align:#center
 spinner autoSizeSpinner "Base Scale" align:#center type:#float range:[0,10000,100] enabled:false
+
+checkBox loadOffsetCheckBox "Load at below frame instead of replacing:" checked:false align:#left
+spinner offsetSpinner "Frame" align:#center type:#float range:[0,100000,0] enabled:false
+
 Label lab5 "If a player costume has elevated feet, select this" align:#left
 Label lab6	"before loading animations:" align:#left
 checkBox heelCheck "Heeled outfit?" checked:false align:#left
@@ -107,7 +112,11 @@ fn frameTimeRead frameTimeAddress frameCount reader =
 
 fn loadPSO2Anim aqmFile =
 (
-	
+	offset = 0
+	if loadOffsetCheckBox.Checked == true then
+	(
+		offset = offsetSpinner.Value
+	)
 	-- Read file
 	local reader = FileStreamReader()
 	reader.SetFile aqmFile false
@@ -438,7 +447,13 @@ fn loadPSO2Anim aqmFile =
 				close f
 			)
 
-	animationRange = interval 0 (animTime / 0x10)
+	if offset != 0 and ((animTime / 0x10) + offset) > animationRange.end then
+	(
+		animationRange = interval 0 ((animTime / 0x10) + offset)
+	) else 
+	(
+		animationRange = interval 0 (animTime / 0x10)
+	)
 	
 	--Value to scale anim values by
 	scaleVal = 1
@@ -474,23 +489,23 @@ fn loadPSO2Anim aqmFile =
 					for k = 1 to nodeAnimArray[i].nodePosFrames.count do
 					(
 						PosFrameData = nodeAnimArray[i].nodePosFrames[k]
-						at time (nodeAnimArray[i].nodePosTimings[k] / 0x10) pso2Bone.Controller.Position = ([ PosFrameData.x * scaleVal, (PosFrameData.y * scaleVal) + heelVal, PosFrameData.z * scaleVal ])
+						at time ((nodeAnimArray[i].nodePosTimings[k] / 0x10) + offset) pso2Bone.Controller.Position = ([ PosFrameData.x * scaleVal, (PosFrameData.y * scaleVal) + heelVal, PosFrameData.z * scaleVal ])
 					)
 				) else if (ignoreTranslate.checked == false or i == 2) then
 				(
 					PosFrameData = nodeAnimArray[i].nodePosFrames[1]
-					at time 0 pso2Bone.Controller.Position = ([ PosFrameData.x * scaleVal, (PosFrameData.y * scaleVal) + heelVal, PosFrameData.z * scaleVal ])
+					at time offset pso2Bone.Controller.Position = ([ PosFrameData.x * scaleVal, (PosFrameData.y * scaleVal) + heelVal, PosFrameData.z * scaleVal ])
 				)
 				--Rotation
 				if (nodeAnimArray[i].nodeRotTimings != undefined) then
 				(
 					for k = 1 to nodeAnimArray[i].nodeRotFrames.count do
 					(
-						at time (nodeAnimArray[i].nodeRotTimings[k] / 0x10) pso2Bone.Controller.Rotation = (inverse nodeAnimArray[i].nodeRotFrames[k])
+						at time ((nodeAnimArray[i].nodeRotTimings[k] / 0x10) + offset) pso2Bone.Controller.Rotation = (inverse nodeAnimArray[i].nodeRotFrames[k])
 					)
 				) else
 				(
-					at time 0 pso2Bone.Controller.Rotation = (inverse nodeAnimArray[i].nodeRotFrames[1])
+					at time offset pso2Bone.Controller.Rotation = (inverse nodeAnimArray[i].nodeRotFrames[1])
 				)
 				--Scale 
 				if (nodeAnimArray[i].nodeSclTimings != undefined) then
@@ -501,18 +516,18 @@ fn loadPSO2Anim aqmFile =
 						timing = nodeAnimArray[i].nodeSclTimings[k]
 						if adaptScale.Checked == false then
 						(
-							at time (timing / 0x10) pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z])
+							at time ((timing / 0x10) + offset) pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z])
 						) else 
 						(
 							parScale = [1, 1, 1]
 							if pso2Bone.parent != undefined then
 							(
-								at time (timing / 0x10) parScale = pso2Bone.parent.transform.scalepart						
+								at time ((timing / 0x10) + offset) parScale = pso2Bone.parent.transform.scalepart						
 							)
-							at time (timing / 0x10) pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z]) / parScale
+							at time ((timing / 0x10) + offset) pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z]) / parScale
 							for child in pso2Bone.children do
 							(
-								at time (timing / 0x10) child.Scale = [1, 1, 1]
+								at time ((timing / 0x10) + offset) child.Scale = [1, 1, 1]
 							)
 						)
 					)
@@ -521,18 +536,18 @@ fn loadPSO2Anim aqmFile =
 					SclFrameData = nodeAnimArray[i].nodeSclFrames[1]
 					if adaptScale.Checked == false then
 					(
-						at time 0 pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z ])
+						at time offset pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z ])
 					) else
 					(
 						parScale = [1, 1, 1]
 						if pso2Bone.parent != undefined then
 						(
-							at time 0 parScale = pso2Bone.parent.transform.scalepart							
+							at time offset parScale = pso2Bone.parent.transform.scalepart							
 						)
-						at time 0 pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z]) / parScale
+						at time offset pso2Bone.Controller.Scale = ([ SclFrameData.x, SclFrameData.y, SclFrameData.z]) / parScale
 						for child in pso2Bone.children do
 						(
-							at time 0 child.Scale = [1, 1, 1]
+							at time offset child.Scale = [1, 1, 1]
 						)
 					)
 				) 
@@ -625,7 +640,7 @@ fn exportPSO2Anim aqmFile =
 	--for o in objects where classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false)) do
 	for o in objects where isGroupHead o == false and isGroupMember o == false and (superclassof o == helper or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
 	(
-		if (getUserProp o "EffectNode") != true then
+		if (getUserProp o "EffectNode") != true and (bit.and (("0x" + (getUserProp o "BoneShort2")) as integer) 0x400) != 0x400 then
 		(
 			boneName = o.name
 			posFrames = #()
@@ -1397,10 +1412,6 @@ fn exportPSO2Anim aqmFile =
 
 on animImportPSO2 pressed do
 (
-	if loadClear.checked then
-	(
-		ClearAnimations()
-	)
 	-- Script start dir
 	startPath = getFilenamePath(getThisScriptFilename())
 	-- Open up a dialog box
@@ -1410,6 +1421,10 @@ on animImportPSO2 pressed do
 	--Load the Animation in
 	if animFileName != undefined then
 	(
+		if loadClear.checked and loadOffsetCheckBox.checked == false then
+		(
+			ClearAnimations()
+		)
 		loadPSO2Anim animFileName
 	)
 )
@@ -1429,6 +1444,11 @@ on animExportPSO2 pressed do
 on autoSizeCheckBox changed nowChecked do
 (
 	autoSizeSpinner.enabled = nowChecked
+)
+
+on loadOffsetCheckBox changed nowChecked do
+(
+	offsetSpinner.enabled = nowChecked
 )
 
 on heelCheck changed nowChecked do
@@ -1455,7 +1475,7 @@ on heelCheck changed nowChecked do
 )
 
 )
-createDialog tagRoll 360 400
+createDialog tagRoll 360 460
 
 
 

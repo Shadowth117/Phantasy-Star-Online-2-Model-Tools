@@ -1407,7 +1407,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
         (	
 			thePath = getFilenamePath objFileName
 			
-          theFiles = (getFiles (thePath+"\\*.aqp")) + (getFiles (thePath+"\\*.aqo")) + (getFiles (thePath+"\\*.trp")) + (getFiles (thePath+"\\*.tro")) + (getFiles (thePath+"\\*.tcb")) 
+          theFiles = (getFiles (thePath+"\\*.aqp")) + (getFiles (thePath+"\\*.aqo")) + (getFiles (thePath+"\\*.trp")) + (getFiles (thePath+"\\*.tro")) + (getFiles (thePath+"\\*.tcb")) + (getFiles (thePath+"\\*.prm")) 
 		  for objFileName = theFiles do-- go through all of them
           (
 			print objFileName
@@ -1510,7 +1510,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 	
 	on openAQMButton pressed do
 	(
-		FileIn @"PSO2AQM_IO_v1.5.2.ms"
+		FileIn @"PSO2AQM_IO_v1.5.3.ms"
 	)
 	
 	on importTCBButton pressed do
