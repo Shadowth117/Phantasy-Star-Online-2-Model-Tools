@@ -13,6 +13,26 @@ fn SetImport fileName autoSize sizeVal yZflip =
 	reader.SetFile fileName false
 	reader.SetBigEndian false
 	
+	while (eof reader) == false do
+	(
+		objLen = reader.ReadF16()
+		reader.SeekSet( 0x14 )
+		objPos = reader.ReadVec3F32()
+		objRot = reader.ReadVec3F32()
+		reader.SeekSet( 0x2 )
+		reader.ReadFixedLengthString (0x30)
+	)
+	
+	reader.Close
+)
+
+fn SetImport fileName autoSize sizeVal yZflip =
+(
+	-- Read file
+	local reader = FileStreamReader()
+	reader.SetFile fileName false
+	reader.SetBigEndian false
+	
 	entities = #()
 	eStarts = #()
 	eStrings = #()
@@ -121,6 +141,7 @@ fn SetImport fileName autoSize sizeVal yZflip =
 rollout SetWindow "PSO2 .set Tool" width:155 height:90
 (
 	button 'FileButton' "Load .set" align:#center
+	button 'FileButtonPacket' "Load object packet" align:#center
 	checkBox autoSizeCheckBox "Rescale" checked:true align:#center
 	spinner autoSizeSpinner "Scale by:" align:#center type:#float range:[0,10000,100] enabled:false
 	checkBox YZCheckBox "Y-Z Axis Flip" checked: true align:#center
@@ -137,6 +158,22 @@ rollout SetWindow "PSO2 .set Tool" width:155 height:90
 			ClearListener()
 			print (filenameFromPath objFileName)
 			SetImport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked
+		)
+		max views redraw
+	)
+	
+	on FileButtonPacket pressed do
+	(
+		
+		local objFileName = undefined
+		-- Open up a dialog box
+		objFileName = getOpenFileName caption:"PSO2 .set" \
+					types:"PSO2 set (*.set)|*.set|All Files (*.*)|*.*|"
+		if (objFileName != undefined) then
+		(
+			ClearListener()
+			print (filenameFromPath objFileName)
+			SetPacketImport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked
 		)
 		max views redraw
 	)
