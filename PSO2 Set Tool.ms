@@ -6,7 +6,7 @@
 FileIn @"Include\MaxScriptExtensions\FileStreamReader.ms"
 FileIn @"Include\MaxScriptExtensions\FileUtils.ms"
 
-fn SetImport fileName autoSize sizeVal yZflip =
+fn SetPacketImport fileName autoSize sizeVal yZflip =
 (
 	-- Read file
 	local reader = FileStreamReader()
@@ -51,7 +51,7 @@ fn SetImport fileName autoSize sizeVal yZflip =
 		append eStrings (reader.ReadFixedLengthString (len - 0x4))
 	)
 	print "entity acquisition loop"
-	aDummy = dummy pos: ( [0, 0, 0] ) boxsize:[1,1,1] name: ( "entityParent")
+	aDummy = dummy pos: ( [0, 0, 0] ) boxsize:[1,1,1] name: ( "entityParent" + "_" + (filenameFromPath fileName))
 	dec = 
 	for i = 1 to entityCount do
 	(
@@ -138,9 +138,10 @@ fn SetImport fileName autoSize sizeVal yZflip =
 	)
 )
 
-rollout SetWindow "PSO2 .set Tool" width:155 height:90
+rollout SetWindow "PSO2 .set Tool" width:155 height:150
 (
 	button 'FileButton' "Load .set" align:#center
+	button 'BatchSetImport' "Load .set group" align:#center
 	button 'FileButtonPacket' "Load object packet" align:#center
 	checkBox autoSizeCheckBox "Rescale" checked:true align:#center
 	spinner autoSizeSpinner "Scale by:" align:#center type:#float range:[0,10000,100] enabled:false
@@ -159,6 +160,28 @@ rollout SetWindow "PSO2 .set Tool" width:155 height:90
 			print (filenameFromPath objFileName)
 			SetImport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked
 		)
+		max views redraw
+	)
+	
+	on BatchSetImport pressed do
+	(
+		-- Open up a dialog box
+		local objFileName = getOpenFileName caption:"PSO2 .set" \
+					types:"PSO2 set (*.set)|*.set|All Files (*.*)|*.*|"
+		
+		if objFileName != undefined then--if the user did not cancel
+        (	
+			thePath = getFilenamePath objFileName
+			
+          theFiles = (getFiles (thePath+"\\*.set"))
+		  for objFileName = theFiles do-- go through all of them
+          (
+			print objFileName
+			SetImport objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked
+		  )
+	    )
+		
+	    -- Redraw max viewports
 		max views redraw
 	)
 	
