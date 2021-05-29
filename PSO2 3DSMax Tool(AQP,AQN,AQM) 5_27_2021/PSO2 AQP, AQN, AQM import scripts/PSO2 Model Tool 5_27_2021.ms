@@ -1040,8 +1040,7 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 			mate = (dotNetObject genMate)
 			
 			--Parse shader types, blend types, and special identifiers from material name while removing the aforementioned from the name
-			matName = matArray[mat].name	
-			
+			matName = matArray[mat].name
 			filter1 = (filterstring matName ")")
 			if (filter1.count > 1) then
 			(
@@ -1112,9 +1111,7 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 		aquaUtil.aquaModels.Add(newSet)
 		if(doNGS == true) then
 		(
-			print "before convert"
 			aquaUtil.ConvertToNGSPSO2Mesh UNRMExport useFaceNrms baHack UNRMExport boundZero true
-			print "convert ok"
 			aquaUtil.WriteNGSNIFLModel fileName fileName
 		) else 
 		(
