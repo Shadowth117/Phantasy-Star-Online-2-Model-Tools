@@ -501,7 +501,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot ngsBones =
 	
 	--Check how bone export order will be done
 	scenebones = #()
-	for o in objects where isGroupHead o == false and o.name != "rotationDummy" and isGroupMember o == false and (superclassof o == helper or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
+	for o in objects where isGroupHead o == false and o.name != "rotationDummy" and isGroupMember o == false and (superclassof o == helper or o.children.count > 0 or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
 	(
 		boneCheck = findString (o.name) "("
 		if (boneCheck == 1 or GetUserProp o "NodeID" != undefined) then
@@ -517,8 +517,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot ngsBones =
 			scenebones[1] = o
 		)
 	)
-	
-		--Rotate if desired (probably desired)
+	--Rotate if desired (probably desired)
 	if (YZRot == true) then
 	(
 		rotDummy = dummy pos: ( [0, 0, 0] ) name: ( "rotationDummy")
@@ -528,7 +527,7 @@ fn SkelExport aqnFile ResizeChecked ResizeValue YZRot ngsBones =
 	)
 	
 	--Loop through bones and gather info
-	for o in objects where isGroupHead o == false and isGroupMember o == false and (superclassof o == helper or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
+	for o in objects where isGroupHead o == false and isGroupMember o == false and (superclassof o == helper or o.children.count > 0 or o.parent != undefined or classOf o == Biped_Object or classOf o == BoneGeometry or (try(classOf o.transform.controller == BipSlave_Control)catch(false))) do
 	(
 		--Write user properties to allow for animation export after if desired
 		if getUserProp o "BoneShort1" == undefined then
