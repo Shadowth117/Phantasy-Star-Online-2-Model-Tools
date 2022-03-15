@@ -296,7 +296,11 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 		currentPath = getFilenamePath(fileName)
 		dotnet.loadAssembly (startPath + @"\include\AquaLib\AquaModelLibrary.dll")
 		aquaUtil = dotNetObject "AquaModelLibrary.AquaUtil"
-		aquaUtil.ReadModel (dotNetObject "System.String" fileName)
+		if (ext == ".axs") then
+		(
+			aquaUtil.aquaBones.Clear()
+		) 
+		aquaUtil.ReadModel (dotNetObject "System.String" fileName) true
 
 		pso2BoneArray = undefined
 			
@@ -323,7 +327,10 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 			(
 				aquaUtil.ReadBones (dotNetObject "System.String" boneFileName)
 				pso2BoneArray = (SkelImportNET aquaUtil.aquaBones.item[0] false useAutoSize autoSizeValue useYZFlip keepBoneIds)
-			) else 
+			) else if (ext == ".axs") then
+			(
+				pso2BoneArray = (SkelImportNET aquaUtil.aquaBones.item[0] false useAutoSize autoSizeValue useYZFlip keepBoneIds)
+			) else
 			(
 				useBones = false
 			)
@@ -629,9 +636,12 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 						if model.objc.type >= 0xC33 then
 						(
 							bonePalette = model.bonePalette
+							print "0xC33"
+							print bonePalette.Count
 						) else 
 						(
 							bonePalette = model.vtxlList.item[vsetIndex].bonePalette
+							print "Classic"
 						)
 						--Apply Skinned Nodes 
 						for b = 0 to (bonePalette.Count - 1) do
@@ -1572,8 +1582,8 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		
 		local objFileName = undefined
 		-- Open up a dialog box
-		objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 model" \
-					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm|All Files (*.*)|*.*|"
+		objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 or Phantasy Star Nova model" \
+					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm, *.axs)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm;*.axs|All Files (*.*)|*.*|"
         if (objFileName != undefined) then
 		(
 			importLOD = importLevelOfDetail.checked
@@ -1599,7 +1609,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 	on importPath pressed do
 	(
 		-- Open up a dialog box
-		local objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 model" \
+		local objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 or Phantasy Star Nova model" \
 					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm|All Files (*.*)|*.*|"
 		
 		if objFileName != undefined then--if the user did not cancel
