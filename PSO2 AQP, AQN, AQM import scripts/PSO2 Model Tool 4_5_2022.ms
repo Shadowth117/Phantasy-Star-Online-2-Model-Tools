@@ -208,7 +208,7 @@ fn importPRM fileName useAutoSize autoSizeValue useYZFlip =
 		meshName = getFilenameFile(fileName) + getFilenameType(fileName)
 		dotnet.loadAssembly (startPath + @"\include\AquaLib\AquaModelLibrary.dll")
 		aquaUtil = dotNetObject "AquaModelLibrary.AquaUtil"
-		aquaUtil.ReadPRM (dotNetObject "System.String" fileName)
+		aquaUtil.LoadPRM (dotNetObject "System.String" fileName)
 			
 		model = aquaUtil.prmModels.item[0]
 		--Get vert array
@@ -643,11 +643,15 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 							bonePalette = model.vtxlList.item[vsetIndex].bonePalette
 							print "Classic"
 						)
+						
 						--Apply Skinned Nodes 
 						for b = 0 to (bonePalette.Count - 1) do
 						(
 							tempB = bonePalette.item[b] + 1
-							SkinOps.AddBone skinMod (pso2BoneArray[tempB].MaxBone) 0
+							if pso2BoneArray[tempB] != undefined then
+							(
+								SkinOps.AddBone skinMod (pso2BoneArray[tempB].MaxBone) 0
+							)
 						)
 						
 						-- Set the weight for each of them 
@@ -1155,7 +1159,13 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 				difColor = undefined
 			)
 			
-			mate.twoSided = matArray[mat].twoSided
+			if matArray[mat].twoSided == true then
+			(
+				mate.twoSided = 1
+			) else 
+			(
+				mate.twoSided = 0
+			)
 			mate.matName = matName
 			
 			aqobj.tempMats.Add(mate)
@@ -1583,7 +1593,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		local objFileName = undefined
 		-- Open up a dialog box
 		objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 or Phantasy Star Nova model" \
-					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm, *.axs)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm;*.axs|All Files (*.*)|*.*|"
+					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm, *.prx, *.axs)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm;*.prx;*.axs|All Files (*.*)|*.*|"
         if (objFileName != undefined) then
 		(
 			importLOD = importLevelOfDetail.checked
@@ -1591,7 +1601,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 			if (getFilenameType objFileName) == ".tcb" then
 			(
 				importTCB objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
-			) else if (getFilenameType objFileName) == ".prm" then
+			) else if (getFilenameType objFileName) == ".prm"  or  (getFilenameType objFileName) == ".prx" then
 			(
 				importPRM objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
 			) else 
@@ -1610,13 +1620,13 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 	(
 		-- Open up a dialog box
 		local objFileName = getOpenFileName caption:"Import Phantasy Star Online 2 or Phantasy Star Nova model" \
-					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm|All Files (*.*)|*.*|"
+					types:"PSO2 Model (*.aqo, *.tro, *.aqp, *.trp, *.tcb, *.prm, *.prx)|*.aqo;*.tro;*.aqp;*.trp;*.tcb;*.prm;*.prx|All Files (*.*)|*.*|"
 		
 		if objFileName != undefined then--if the user did not cancel
         (	
 			thePath = getFilenamePath objFileName
 			
-          theFiles = (getFiles (thePath+"\\*.aqp")) + (getFiles (thePath+"\\*.aqo")) + (getFiles (thePath+"\\*.trp")) + (getFiles (thePath+"\\*.tro")) + (getFiles (thePath+"\\*.tcb")) + (getFiles (thePath+"\\*.prm")) 
+          theFiles = (getFiles (thePath+"\\*.aqp")) + (getFiles (thePath+"\\*.aqo")) + (getFiles (thePath+"\\*.trp")) + (getFiles (thePath+"\\*.tro")) + (getFiles (thePath+"\\*.tcb")) + (getFiles (thePath+"\\*.prm"))  + (getFiles (thePath+"\\*.prx")) 
 		  for objFileName = theFiles do-- go through all of them
           (
 			print objFileName
@@ -1625,7 +1635,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 			if (getFilenameType objFileName) == ".tcb"  then
 			(
 				importTCB objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
-			) else if (getFilenameType objFileName) == ".prm" then
+			) else if (getFilenameType objFileName) == ".prm" or  (getFilenameType objFileName) == ".prx" then
 			(
 				importPRM objFileName autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked 
 			) else 
@@ -1721,5 +1731,5 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		)
     )
 )
-createDialog pso2ImportRollout 220 740
+createDialog pso2ImportRollout 220 760
 )
