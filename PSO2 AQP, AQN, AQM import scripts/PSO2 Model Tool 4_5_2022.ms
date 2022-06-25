@@ -734,7 +734,7 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 		vec2 = dotNetClass "System.Numerics.Vector2"
 		vec3 = dotNetClass "System.Numerics.Vector3"
 		vec4 = dotNetClass "System.Numerics.Vector4"
-		mdlSet = dotNetClass "AquaModelLibrary.AquaUtil+ModelSet"
+		mdlSet = dotNetClass "AquaModelLibrary.Utility.AquaUtilData+ModelSet"
 		aqo = dotNetClass "AquaModelLibrary.ClassicAquaObject"
 		ngsAqo = dotNetClass "AquaModelLibrary.NGSAquaObject"
 		vertSet = dotNetClass "AquaModelLibrary.AquaObject+VTXL"
