@@ -1731,5 +1731,5 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		)
     )
 )
-createDialog pso2ImportRollout 220 760
+createDialog pso2ImportRollout 220 770
 )
