@@ -2,7 +2,7 @@ ClearListener()
 FileIn @"include\MaxScriptExtensions\FileStreamReader.ms"
 FileIn @"include\MaxScriptExtensions\FileUtils.ms"
 FileIn @"include\UnusedBoneRemover.ms"
-FileIn @"include\AQNBoneImportv1.4.ms"
+FileIn @"include\AQNBoneImport.ms"
 
 if ghostingDoneAlready == undefined then
 (
@@ -351,6 +351,7 @@ fn importAQO fileName useBones useAutoSize autoSizeValue useYZFlip keepBoneIds p
 			(
 				model.splitVSETPerMesh()
 			)
+			model.FixHollowMatNaming()
 			
 			--Create multi material for adding materials we make later. Materials *must* be generated using mesh data since materials with different texture sets are possible and max doesn't separate texture sets from materials
 			newMaterial = multimaterial numsubs:0
@@ -824,7 +825,10 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 				boneCount = skinOps.GetNumberBones objSkin
 				for i = 1 to boneCount do
 				(
-					tempMesh.bonePalette.Add (GetUserProp (getnodebyname (skinOps.GetBoneName objSkin i 1)) "NodeID") -- This should already be set by the bone exporting portion
+					nodeName = (skinOps.GetBoneName objSkin i 1)
+					thisNode = (getnodebyname nodeName)
+					propVal = (GetUserProp thisNode "NodeID")
+					tempMesh.bonePalette.Add (propVal) -- This should already be set by the bone exporting portion
 				)
 			) else 
 			(
@@ -1533,6 +1537,8 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		checkBox importLevelOfDetail "Import LOD models" checked:false align:#center
 		checkBox KeepBoneIds "Bone IDs in object name" checked:true align:#left
 		progressbar prog color:blue
+		
+		checkBox prsVals "Debug:Use PRS Values" checked:false align:#right
 	)	
 	group "Import"
 	(
@@ -1664,7 +1670,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 				
 			--SkelImport boneFileName prsVals.checked autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked KeepBoneIds.checked
 			--SkelImport boneFileName false autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked KeepBoneIds.checked
-			SkelImportNET aquaUtil.aquaBones.item[0] false autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked KeepBoneIds.checked
+			SkelImportNET aquaUtil.aquaBones.item[0] prsVals.checked autoSizeCheckBox.checked autoSizeSpinner.value YZCheckBox.checked KeepBoneIds.checked
 		) 
 		
 		-- Redraw max viewports
@@ -1716,7 +1722,7 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 	
 	on openAQMButton pressed do
 	(
-		FileIn @"PSO2AQM_IO_v1.5.3.ms"
+		FileIn @"PSO2AQM_IO.ms"
 	)
 	
 	on importTCBButton pressed do
@@ -1731,5 +1737,5 @@ rollout pso2ImportRollout "PSO2 Model Importer"
 		)
     )
 )
-createDialog pso2ImportRollout 220 770
+createDialog pso2ImportRollout 220 790
 )

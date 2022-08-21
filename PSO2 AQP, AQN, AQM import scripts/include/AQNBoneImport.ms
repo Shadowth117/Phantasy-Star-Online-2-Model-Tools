@@ -129,8 +129,49 @@ fn SkelImportNET aquaNode PRSChecked ResizeChecked ResizeValue YZRot BoneIDCheck
             parentBone = maxBones[aqNode.parentId + 1];
 		)
 		
-		tfm = (matrix3 [aqNode.m1.X, aqNode.m1.Y, aqNode.m1.Z] [aqNode.m2.X, aqNode.m2.Y, aqNode.m2.Z] [aqNode.m3.X, aqNode.m3.Y, aqNode.m3.Z] [aqNode.m4.X, aqNode.m4.Y, aqNode.m4.Z])
-		tfm = inverse tfm
+		if (PRSChecked) then
+		(
+			prsAngles = eulerangles (aqNode.eulRot.X) (aqNode.eulRot.Y) (aqNode.eulRot.Z) 
+			if aqNode.boneName.GetString() == "spine1_efce" then
+			(
+				for f = 1 to 9 do
+				(
+					newQuat = eulertoquat prsAngles order:f
+					print f
+					print newQuat
+					newQuat = inverse newQuat
+					
+					print newQuat
+				)
+				prsAngles.X = -prsAngles.X
+				prsAngles.Y = -prsAngles.Y
+				prsAngles.Z = -prsAngles.Z
+				for f = 1 to 9 do
+				(
+					newQuat = eulertoquat prsAngles order:f
+					print f
+					print newQuat
+					newQuat = inverse newQuat
+					
+					print newQuat
+				)
+				newQuat = eulertoquat prsAngles order:3
+				newQuat = inverse newQuat
+				tfm = newQuat as matrix3
+			) else (
+				tfm = (prsAngles ) as matrix3
+			)
+			tfm.row4 = [ aqNode.pos.X, aqNode.pos.Y, aqNode.pos.Z ]
+		) else (
+			tfm = (matrix3 [aqNode.m1.X, aqNode.m1.Y, aqNode.m1.Z] [aqNode.m2.X, aqNode.m2.Y, aqNode.m2.Z] [aqNode.m3.X, aqNode.m3.Y, aqNode.m3.Z] [aqNode.m4.X, aqNode.m4.Y, aqNode.m4.Z])
+			tfm = inverse tfm
+		)
+		
+		if ( parentBone != undefined and PRSChecked) then
+		(
+			parentTFM = copy parentBone.Transform
+			tfm = tfm * parentTFM
+		)
 		
 		newBone = bonesys.createbone \
 			tfm.row4 \
@@ -149,7 +190,13 @@ fn SkelImportNET aquaNode PRSChecked ResizeChecked ResizeValue YZRot BoneIDCheck
         newBone.height = 0.001;
         newBone.transform = tfm;
         newBone.setBoneEnable false 0;
-        newBone.wirecolor = ([0,196,196] as color);
+		if (PRSChecked) then
+		(
+			newBone.wirecolor = ([196, 0, 0] as color);
+		) else 
+		(
+			newBone.wirecolor = ([0,196,196] as color);
+		)
         newBone.showlinks = true;
         newBone.pos.controller      = TCB_position ();
         newBone.rotation.controller = TCB_rotation ();
@@ -207,8 +254,14 @@ fn SkelImportNET aquaNode PRSChecked ResizeChecked ResizeValue YZRot BoneIDCheck
         newBone.width  = 0.05;
         newBone.height = 0.05;
         newBone.transform = tfm;
-        newBone.setBoneEnable false 0;
-        newBone.wirecolor = ([0,196,0] as color);
+        newBone.setBoneEnable false 0;		
+		if (PRSChecked) then
+		(
+			newBone.wirecolor = ([196, 0, 196] as color);
+		) else 
+		(
+			newBone.wirecolor = ([0,196,0] as color);
+		)
         newBone.showlinks = true;
         newBone.pos.controller      = TCB_position ();
         newBone.rotation.controller = TCB_rotation ();
