@@ -1,3 +1,4 @@
+heapsize += 2000000
 ClearListener()
 FileIn @"include\MaxScriptExtensions\FileStreamReader.ms"
 FileIn @"include\MaxScriptExtensions\FileUtils.ms"
@@ -1181,7 +1182,7 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 		aquaUtil.aquaModels.Add(newSet)
 		if(doNGS == true) then
 		(
-			aquaUtil.ConvertToNGSPSO2Mesh UNRMExport useFaceNrms baHack BinormExport boundZero doRigid true
+			aquaUtil.ConvertToNGSPSO2Mesh UNRMExport useFaceNrms baHack BinormExport boundZero doRigid true false
 			aquaUtil.WriteNGSNIFLModel fileName fileName
 		) else 
 		(
