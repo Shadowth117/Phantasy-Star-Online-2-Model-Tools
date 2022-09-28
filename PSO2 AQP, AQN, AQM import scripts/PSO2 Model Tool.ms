@@ -99,13 +99,19 @@ fn SetupMaterials model filepath meshNum newMaterial matInfoArray =
 	
 	--Get opacity type
 	opacityType = modelMat.alphaType.GetString();
+	if opacityType == "" then
+	(
+		opacityType = "blendalpha"
+	)
 	
 	--Assemble and set name
-	matName = "(" + shadSet.item[0] + "," + shadSet.item[1] + ")" + "{" + opacityType + "}" + matName
+	rendIndex = model.meshList.item[meshNum].rendIndex
+	twoS = model.rendList.item[rendIndex].twosided
+	alphaCut = model.rendList.item[rendIndex].alphaCutoff
+	matName = "(" + shadSet.item[0] + "," + shadSet.item[1] + ")" + "{" + opacityType + "}" + matName + "@" + (twoS as string) + "@" + (alphaCut as string) 
 	newMaterial[matId] = standard name:matName
 	
 	--Set 2-sided flag
-	rendIndex = model.meshList.item[meshNum].rendIndex
 	if model.rendList.item[rendIndex].twosided > 0 then
 	(
 		newMaterial[matId].twoSided = true
@@ -1131,6 +1137,20 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 				mate.specialType = (filterstring filter3[1] "[")[1]
 				matName = filter3[filter3.count]
 			)
+			filter4 = (filterstring matName "@")
+			matName = filter4[1]
+			if (filter4.count > 1) then
+			(
+				for f = 2 to filter4.count do
+				(
+					case f of 
+					(
+						2: mate.twoSided = filter4[f] as integer
+						3: mate.alphaCutoff = filter4[f] as integer
+					)
+					
+				)
+			)
 			
 			mate.texNames = dotnetobject strList
 			mate.texUVSets = dotnetobject int32List
@@ -1164,13 +1184,6 @@ fn ModelDataCollector meshes extraBoneList fileName ResizeChecked ResizeValue YZ
 				difColor = undefined
 			)
 			
-			if matArray[mat].twoSided == true then
-			(
-				mate.twoSided = 1
-			) else 
-			(
-				mate.twoSided = 0
-			)
 			mate.matName = matName
 			
 			aqobj.tempMats.Add(mate)
